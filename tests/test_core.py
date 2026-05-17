@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from binary_comp.core.ghidra import function_starts_from_export_dir
-from binary_comp.core.mapfile import function_starts_from_map, parse_msvc_map_by_obj
+from binary_comp.core.mapfile import (
+    function_starts_from_map,
+    parse_encoded_address_map,
+    parse_msvc_map_by_obj,
+)
 from binary_comp.core.pe import PEImage
 
 from conftest import DATA_VA, TEXT_VA
@@ -16,6 +20,13 @@ def test_parse_msvc_map_by_object(fixture_root):
         "_sample_boundary",
     ]
     assert function_starts_from_map(entries_by_obj) == [0x401000, 0x401010]
+
+
+def test_parse_encoded_address_map(fixture_root):
+    address_map = parse_encoded_address_map(str(fixture_root / "rebuilt.map"))
+
+    assert address_map[0x402000] == 0x402000
+    assert address_map[0x402010] == 0x402010
 
 
 def test_function_starts_from_ghidra_export(fixture_root):

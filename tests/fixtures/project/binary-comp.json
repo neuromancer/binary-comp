@@ -5,6 +5,7 @@
       "rebuilt_exe": "rebuilt.exe",
       "map": "rebuilt.map",
       "source_dirs": ["src"],
+      "globals_source": "src/globals.cpp",
       "code_export_dir": "code"
     }
   }

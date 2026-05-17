@@ -1,2 +1,4 @@
  0001:00000000       _sample_function 00401000 f sample.obj
  0001:00000010       _sample_boundary 00401010 f sample.obj
+ 0003:00000000       ?g_Text_00402000@@3PADA 00402000     globals.obj
+ 0003:00000010       ?g_Number_00402010@@3HA 00402010     globals.obj

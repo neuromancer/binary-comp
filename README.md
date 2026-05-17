@@ -4,11 +4,12 @@ Standalone binary comparison and verification tools for C/C++ reimplementation
 projects.
 
 The package is being extracted from project-specific scripts into reusable
-library modules plus a CLI. The current first port is the Capstone-backed value
-checker:
+library modules plus a CLI. The current analyzers cover Capstone-backed operand
+value checks and global data comparison:
 
 ```bash
 binary-comp values --config path/to/binary-comp.json --target full
+binary-comp data --config path/to/binary-comp.json --target full
 ```
 
 ## Design principles
@@ -21,9 +22,10 @@ required.
 ## Minimal configuration
 
 The value checker needs only a target description: original binary, rebuilt
-binary, linker map, and source directory. Function boundaries from a Ghidra
-export directory are optional hints; operands are always decoded from the
-binaries with Capstone.
+binary, linker map, and source directory. The data checker additionally needs a
+globals source file with original addresses encoded in symbol names or comments.
+Function boundaries from a Ghidra export directory are optional hints; operands
+are always decoded from the binaries with Capstone.
 
 ```json
 {
@@ -33,6 +35,7 @@ binaries with Capstone.
       "rebuilt_exe": "path/to/rebuilt.exe",
       "map": "path/to/rebuilt.map",
       "source_dirs": ["path/to/src"],
+      "globals_source": "path/to/src/globals.cpp",
       "code_export_dir": "path/to/ghidra-export"
     }
   }

@@ -36,10 +36,11 @@ def test_load_minimal_project_config(fixture_root):
     _, target = load_project_target(str(fixture_root / "binary-comp.json"), "full")
 
     assert target.name == "full"
-    assert target.original_exe == "original.exe"
-    assert target.rebuilt_exe == "rebuilt.exe"
-    assert target.map_path == "rebuilt.map"
-    assert target.source_dirs == ("src",)
+    assert target.original_exe == str(fixture_root / "original.exe")
+    assert target.rebuilt_exe == str(fixture_root / "rebuilt.exe")
+    assert target.map_path == str(fixture_root / "rebuilt.map")
+    assert target.source_dirs == (str(fixture_root / "src"),)
+    assert target.globals_source == str(fixture_root / "src" / "globals.cpp")
 
 
 def test_value_checker_on_generated_fixture_project(fixture_root, sample_binaries):

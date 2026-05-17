@@ -5,6 +5,7 @@
       "rebuilt_exe": "path/to/rebuilt.exe",
       "map": "path/to/rebuilt.map",
       "source_dirs": ["path/to/src"],
+      "globals_source": "path/to/src/globals.cpp",
       "code_export_dir": "path/to/ghidra-export"
     }
   }

@@ -12,7 +12,11 @@ TEXT_VA = IMAGE_BASE + 0x1000
 DATA_VA = IMAGE_BASE + 0x2000
 
 
-def write_tiny_pe(path: Path, function_bytes: bytes | None = None) -> None:
+def write_tiny_pe(
+    path: Path,
+    function_bytes: bytes | None = None,
+    data_overrides: dict[int, bytes] | None = None,
+) -> None:
     function_bytes = function_bytes or b"\xB8\x07\x00\x00\x00\x83\xF8\x07\xC3"
     text = bytearray(b"\x90" * 0x200)
     text[:len(function_bytes)] = function_bytes
@@ -42,9 +46,12 @@ def write_tiny_pe(path: Path, function_bytes: bytes | None = None) -> None:
 
     data_header = section_table + 40
     data[data_header:data_header + 8] = b".data\0\0\0"
-    struct.pack_into("<IIII", data, data_header + 8, 0x20, 0x2000, 0x10, 0x400)
+    struct.pack_into("<IIII", data, data_header + 8, 0x20, 0x2000, 0x20, 0x400)
     struct.pack_into("<I", data, data_header + 36, 0xC0000040)
     data[0x400:0x406] = b"hello\0"
+    struct.pack_into("<I", data, 0x410, 7)
+    for offset, value in (data_overrides or {}).items():
+        data[0x400 + offset:0x400 + offset + len(value)] = value
 
     data[0x200:0x400] = text
     path.write_bytes(data)
