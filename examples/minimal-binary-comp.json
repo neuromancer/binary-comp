@@ -1,0 +1,11 @@
+{
+  "targets": {
+    "full": {
+      "original_exe": "path/to/original.exe",
+      "rebuilt_exe": "path/to/rebuilt.exe",
+      "map": "path/to/rebuilt.map",
+      "source_dirs": ["path/to/src"],
+      "code_export_dir": "path/to/ghidra-export"
+    }
+  }
+}
