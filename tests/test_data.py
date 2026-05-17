@@ -42,6 +42,24 @@ def test_parse_pointer_declarations_with_adjacent_star(tmp_path):
     assert [item.size for item in globals_list] == [4, 4, 4]
 
 
+def test_parse_global_declarations_with_multiline_initializer(tmp_path):
+    globals_path = tmp_path / "globals.cpp"
+    globals_path.write_text(
+        "int g_Table_00402030[3] = {\n"
+        "    1,\n"
+        "    2,\n"
+        "    3,\n"
+        "};\n",
+        encoding="utf-8",
+    )
+
+    globals_list = parse_globals_source(str(globals_path))
+
+    assert len(globals_list) == 1
+    assert globals_list[0].address == 0x402030
+    assert globals_list[0].size == 12
+
+
 def test_compare_global_data_matches(fixture_root, sample_binaries):
     original, rebuilt = sample_binaries
 

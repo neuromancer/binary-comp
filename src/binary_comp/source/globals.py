@@ -36,7 +36,7 @@ DECL_RE = re.compile(
     r"(?:\s*(?P<pointers>\*+)\s*|\s+)"
     r"(?P<name>[A-Za-z_]\w*)"
     r"(?P<arrays>(?:\s*\[\s*\d+\s*\])*)"
-    r"\s*(?:=\s*(?P<initializer>.*?))?\s*;"
+    r"\s*(?:=\s*(?P<initializer>[\s\S]*?))?\s*;"
     r"(?P<trailing>[^\n]*)$",
     re.MULTILINE,
 )
