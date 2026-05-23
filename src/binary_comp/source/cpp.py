@@ -221,7 +221,7 @@ def gap_is_only_comments_or_whitespace(
     source: bytes,
     start: int,
     end: int,
-    comment_spans: list[tuple[int, int]],
+    transparent_spans: list[tuple[int, int]],
     span_starts: list[int],
 ) -> bool:
     current = start
@@ -229,14 +229,14 @@ def gap_is_only_comments_or_whitespace(
     while current < end:
         span_idx = bisect_right(span_starts, current) - 1
         if span_idx >= 0:
-            span_start, span_end = comment_spans[span_idx]
+            span_start, span_end = transparent_spans[span_idx]
             if span_start <= current < span_end:
                 current = span_end
                 continue
 
         next_span_idx = span_idx + 1
-        if next_span_idx < len(comment_spans) and comment_spans[next_span_idx][0] == current:
-            current = comment_spans[next_span_idx][1]
+        if next_span_idx < len(transparent_spans) and transparent_spans[next_span_idx][0] == current:
+            current = transparent_spans[next_span_idx][1]
             continue
 
         if chr(source[current]).isspace():
@@ -258,18 +258,22 @@ def parse_source_function_markers(
 
     tree = make_cpp_parser().parse(sanitize_source(source))
     lines = source.splitlines()
-    comment_spans: list[tuple[int, int]] = []
+    transparent_spans: list[tuple[int, int]] = []
     comments: list[tuple[int, int, int, str]] = []
     functions: list[tuple[int, str]] = []
 
     for node in walk(tree.root_node):
         if node.type == "comment":
-            comment_spans.append((node.start_byte, node.end_byte))
+            transparent_spans.append((node.start_byte, node.end_byte))
             line = node.start_point.row
             line_text = lines[line].decode("utf-8", errors="ignore") if line < len(lines) else ""
             address = parse_function_start_comment(node_text(source, node), line_text, include_no_assembly)
             if address is not None:
                 comments.append((node.start_byte, node.end_byte, node.start_point.row + 1, address))
+        elif node.type in ("preproc_call", "preproc_def", "preproc_function_def",
+                           "preproc_include", "preproc_if", "preproc_ifdef",
+                           "preproc_else", "preproc_elif"):
+            transparent_spans.append((node.start_byte, node.end_byte))
         elif node.type == "function_definition":
             name = function_name_with_optional_signature(source, node, signature_names)
             if name is not None:
@@ -277,9 +281,9 @@ def parse_source_function_markers(
 
     comments.sort()
     functions.sort()
-    comment_spans.sort()
+    transparent_spans.sort()
     function_starts = [start for start, _ in functions]
-    comment_starts = [start for start, _ in comment_spans]
+    transparent_starts = [start for start, _ in transparent_spans]
     markers: list[SourceFunctionMarker] = []
 
     for _, comment_end, line, address in comments:
@@ -288,7 +292,7 @@ def parse_source_function_markers(
             continue
 
         function_start, name = functions[function_idx]
-        if gap_is_only_comments_or_whitespace(source, comment_end, function_start, comment_spans, comment_starts):
+        if gap_is_only_comments_or_whitespace(source, comment_end, function_start, transparent_spans, transparent_starts):
             markers.append(SourceFunctionMarker(address=address, name=name, line=line, function_start=function_start))
 
     return markers

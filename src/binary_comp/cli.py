@@ -41,6 +41,11 @@ def add_values_parser(subparsers) -> None:
     parser.add_argument("--no-strings", action="store_true", help="Do not report string literal mismatches")
     parser.add_argument("--no-immediates", action="store_true", help="Do not report small numeric immediate mismatches")
     parser.add_argument("--no-offsets", action="store_true", help="Do not report member displacement mismatches")
+    parser.add_argument(
+        "--include-stack-locals",
+        action="store_true",
+        help="Also report stack-local memory displacement and stack-store value mismatches",
+    )
     parser.set_defaults(handler=run_values)
 
 
@@ -94,6 +99,13 @@ def add_data_parser(subparsers) -> None:
     parser.add_argument("--address", type=lambda value: int(value, 0), help="Compare one original VA")
     parser.add_argument("--size", type=int, default=32, help="Byte count for --address (default: 32)")
     parser.add_argument("--find-missing", action="store_true", help="Scan original section for untracked non-zero dwords")
+    parser.add_argument("--min-address", type=lambda value: int(value, 0),
+                        help="Only scan addresses >= this VA when using --find-missing")
+    parser.add_argument("--max-address", type=lambda value: int(value, 0),
+                        help="Only scan addresses < this VA when using --find-missing")
+    parser.add_argument("--skip-range", action="append", dest="skip_ranges", default=[],
+                        help="Exclude an address range from --find-missing scanning; "
+                             "format START:END (END exclusive). May be repeated.")
     parser.set_defaults(handler=run_data)
 
 
@@ -169,6 +181,7 @@ def run_values(args) -> int:
                 build=not args.no_build,
                 enabled_kinds=enabled_kinds_from_args(args),
                 boundary_report=args.boundary_report,
+                include_stack_locals=args.include_stack_locals,
             ),
         )
     except (ConfigError, FileNotFoundError, RuntimeError) as exc:
@@ -249,12 +262,58 @@ def run_vtables(args) -> int:
     return 1 if summary.has_failures else 0
 
 
+def extract_globals_type_sizes(config: dict) -> dict[str, int]:
+    globals_section = config.get("globals", {})
+    if not isinstance(globals_section, dict):
+        return {}
+    type_sizes = globals_section.get("type_sizes", {})
+    if not isinstance(type_sizes, dict):
+        return {}
+    out: dict[str, int] = {}
+    for name, size in type_sizes.items():
+        if isinstance(size, int):
+            out[str(name)] = size
+        elif isinstance(size, str):
+            try:
+                out[str(name)] = int(size, 0)
+            except ValueError:
+                continue
+    return out
+
+
+def parse_skip_ranges(values: list[str]) -> tuple[tuple[int, int], ...]:
+    ranges: list[tuple[int, int]] = []
+    for value in values or ():
+        for separator in (":", "-"):
+            if separator in value:
+                left, right = value.split(separator, 1)
+                break
+        else:
+            raise ConfigError(f"--skip-range expects START:END, got {value!r}")
+        start = int(left, 0)
+        end = int(right, 0)
+        if end <= start:
+            raise ConfigError(f"--skip-range END must be > START, got {value!r}")
+        ranges.append((start, end))
+    return tuple(ranges)
+
+
 def run_data(args) -> int:
     try:
-        _, target = load_project_target(args.config, args.target)
+        config, target = load_project_target(args.config, args.target)
         globals_source = require_globals_source(args.globals_source or target.globals_source)
+        extra_type_sizes = extract_globals_type_sizes(config)
         if args.find_missing:
-            summary = find_missing_globals(target.original_exe, globals_source, section_name=args.section)
+            skip_ranges = parse_skip_ranges(args.skip_ranges)
+            summary = find_missing_globals(
+                target.original_exe,
+                globals_source,
+                section_name=args.section,
+                min_address=args.min_address,
+                max_address=args.max_address,
+                skip_ranges=skip_ranges,
+                extra_type_sizes=extra_type_sizes,
+            )
             print(format_missing_globals(summary))
             return 0
         if args.address is not None:
@@ -274,6 +333,7 @@ def run_data(args) -> int:
             target.map_path,
             globals_source,
             DataOptions(section_name=args.section, verbose=args.verbose),
+            extra_type_sizes=extra_type_sizes,
         )
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

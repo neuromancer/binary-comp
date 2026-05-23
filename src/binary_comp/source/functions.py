@@ -10,6 +10,8 @@ from binary_comp.core.symbols import symbol_matches, symbol_patterns_for_functio
 
 from .cpp import SourceFunctionGroup, parse_source_function_groups
 
+SOURCE_EXTENSIONS = (".cpp", ".c", ".C")
+
 
 @dataclass(frozen=True)
 class FunctionGroup:
@@ -27,7 +29,7 @@ def iter_cpp_files(source_dirs: tuple[str, ...], map_skip: str | None = None):
             if map_skip and map_skip in root:
                 continue
             for filename in sorted(files):
-                if filename.endswith(".cpp"):
+                if filename.endswith(SOURCE_EXTENSIONS):
                     yield os.path.join(root, filename)
 
 
@@ -52,7 +54,7 @@ def map_source_groups(
     missing: list[tuple[str, SourceFunctionGroup]] = []
 
     for source_path in sorted(groups_by_source):
-        obj = os.path.basename(source_path).replace(".cpp", ".obj")
+        obj = os.path.splitext(os.path.basename(source_path))[0] + ".obj"
         obj_entries = entries_by_obj.get(obj, [])
         used: set[int] = set()
 

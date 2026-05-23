@@ -57,6 +57,9 @@ class MissingGlobalsSummary:
     section_end: int
     known_globals: int
     candidates: tuple[MissingDataCandidate, ...]
+    min_address: int | None = None
+    max_address: int | None = None
+    skip_ranges: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -94,12 +97,13 @@ def compare_global_data(
     map_path: str,
     globals_path: str,
     options: DataOptions | None = None,
+    extra_type_sizes: dict[str, int] | None = None,
 ) -> DataCompareSummary:
     options = options or DataOptions()
     original = PEImage(original_path)
     rebuilt = PEImage(rebuilt_path)
     address_map = parse_encoded_address_map(map_path)
-    globals_list = parse_globals_source(globals_path)
+    globals_list = parse_globals_source(globals_path, extra_type_sizes)
 
     comparisons: list[GlobalComparison] = []
     matches = 0
@@ -186,13 +190,17 @@ def find_missing_globals(
     original_path: str,
     globals_path: str,
     section_name: str = ".data",
+    min_address: int | None = None,
+    max_address: int | None = None,
+    skip_ranges: tuple[tuple[int, int], ...] = (),
+    extra_type_sizes: dict[str, int] | None = None,
 ) -> MissingGlobalsSummary:
     original = PEImage(original_path)
     section = original.section_named(section_name)
     if section is None:
         raise ValueError(f"section not found: {section_name}")
 
-    globals_list = parse_globals_source(globals_path)
+    globals_list = parse_globals_source(globals_path, extra_type_sizes)
     covered_ranges = [
         (global_decl.address, global_decl.address + global_decl.size)
         for global_decl in globals_list
@@ -202,6 +210,12 @@ def find_missing_globals(
 
     for offset in range(0, max(0, len(data) - 3), 4):
         address = section.start + offset
+        if min_address is not None and address < min_address:
+            continue
+        if max_address is not None and address >= max_address:
+            break
+        if is_covered(address, skip_ranges):
+            continue
         value = struct.unpack("<I", data[offset:offset + 4])[0]
         if value == 0 or is_covered(address, covered_ranges):
             continue
@@ -221,6 +235,9 @@ def find_missing_globals(
         section_end=section.start + section.rawsize,
         known_globals=len(globals_list),
         candidates=tuple(candidates),
+        min_address=min_address,
+        max_address=max_address,
+        skip_ranges=tuple(skip_ranges),
     )
 
 
@@ -267,12 +284,20 @@ def format_missing_globals(summary: MissingGlobalsSummary) -> str:
             f"Scanning {summary.section_name}: "
             f"0x{summary.section_start:08x} - 0x{summary.section_end:08x}"
         ),
+    ]
+    if summary.min_address is not None or summary.max_address is not None:
+        min_text = f"0x{summary.min_address:08x}" if summary.min_address is not None else "section start"
+        max_text = f"0x{summary.max_address:08x}" if summary.max_address is not None else "section end"
+        lines.append(f"Restricted to: {min_text} - {max_text}")
+    for start, end in summary.skip_ranges:
+        lines.append(f"Skipping range: 0x{start:08x} - 0x{end:08x}")
+    lines.extend([
         f"Known globals: {summary.known_globals}",
         f"Found {len(summary.candidates)} non-zero untracked dwords",
         "",
         f"{'Address':<12} {'Value':<12} {'Type':<8} Data",
         "-" * 80,
-    ]
+    ])
     for candidate in summary.candidates:
         hex_bytes = " ".join(f"{byte:02x}" for byte in candidate.data)
         ascii_text = "".join(chr(byte) if 32 <= byte < 127 else "." for byte in candidate.data)

@@ -54,6 +54,7 @@ class VerifierPolicy:
 class CompareContext:
     enabled_kinds: frozenset[str]
     policy: VerifierPolicy
+    include_stack_locals: bool
     compiled_diagnostic_targets: frozenset[int]
     original_diagnostic_targets: frozenset[int]
 
@@ -65,6 +66,7 @@ class ValuesOptions:
     build: bool = True
     enabled_kinds: frozenset[str] = frozenset({"strings", "immediates", "offsets"})
     boundary_report: bool = False
+    include_stack_locals: bool = False
 
 
 @dataclass(frozen=True)
@@ -213,7 +215,12 @@ def operand_signature(operand: Operand) -> tuple:
     return (operand.kind,)
 
 
-def comparable_lhs(left: Operand, right: Operand, policy: VerifierPolicy) -> bool:
+def comparable_lhs(
+    left: Operand,
+    right: Operand,
+    policy: VerifierPolicy,
+    include_stack_locals: bool = False,
+) -> bool:
     if left.kind != right.kind:
         return False
     if left.kind == "reg":
@@ -222,7 +229,7 @@ def comparable_lhs(left: Operand, right: Operand, policy: VerifierPolicy) -> boo
         return False
     if left.base != right.base or left.index != right.index or left.scale != right.scale:
         return False
-    if left.base in policy.stack_registers:
+    if left.base in policy.stack_registers and not include_stack_locals:
         return False
     if not left.base:
         return False
@@ -270,6 +277,23 @@ def lhs_is_stack_memory(instr: Instruction, policy: VerifierPolicy) -> bool:
         return False
     operand = instr.operands[0]
     return operand.kind == "mem" and operand.base in policy.stack_registers
+
+
+def has_stack_memory_operand(instr: Instruction, policy: VerifierPolicy) -> bool:
+    return any(op.kind == "mem" and op.base in policy.stack_registers for op in instr.operands)
+
+
+def should_compare_values(compiled: Instruction, original: Instruction, context: CompareContext) -> bool:
+    if compiled.mnemonic in context.policy.value_mnemonics:
+        return True
+    return (
+        context.include_stack_locals
+        and compiled.mnemonic == "lea"
+        and (
+            has_stack_memory_operand(compiled, context.policy)
+            or has_stack_memory_operand(original, context.policy)
+        )
+    )
 
 
 def nearby_immediate_values(instrs: list[Instruction], idx: int, policy: VerifierPolicy) -> set[int]:
@@ -483,6 +507,7 @@ def shifted_memory_base_match_count(
     operand_idx: int,
     delta: int,
     policy: VerifierPolicy,
+    include_stack_locals: bool = False,
 ) -> int:
     if delta == 0:
         return 0
@@ -505,7 +530,7 @@ def shifted_memory_base_match_count(
         o_op = original.operands[operand_idx]
         if c_op.kind != "mem" or o_op.kind != "mem":
             continue
-        if not comparable_lhs(c_op, o_op, policy):
+        if not comparable_lhs(c_op, o_op, policy, include_stack_locals):
             continue
         if not member_displacement(c_op.disp, policy) or not member_displacement(o_op.disp, policy):
             continue
@@ -526,9 +551,19 @@ def equivalent_shifted_memory_base(
     c_op: Operand,
     o_op: Operand,
     policy: VerifierPolicy,
+    include_stack_locals: bool = False,
 ) -> bool:
     delta = c_op.disp - o_op.disp
-    return shifted_memory_base_match_count(compiled_instrs, original_instrs, ci, oi, operand_idx, delta, policy) >= 3
+    return shifted_memory_base_match_count(
+        compiled_instrs,
+        original_instrs,
+        ci,
+        oi,
+        operand_idx,
+        delta,
+        policy,
+        include_stack_locals,
+    ) >= 3
 
 
 def next_mnemonic(instrs: list[Instruction], idx: int) -> str | None:
@@ -720,7 +755,7 @@ def compare_instruction_pair(
         return warnings
     if is_branch_or_call(compiled.mnemonic):
         return warnings
-    if compiled.mnemonic not in context.policy.value_mnemonics:
+    if not should_compare_values(compiled, original, context):
         return warnings
     if not comparable_operands(compiled, original):
         return warnings
@@ -739,7 +774,11 @@ def compare_instruction_pair(
         if c_str is not None or o_str is not None:
             if "strings" not in context.enabled_kinds:
                 continue
-            if compiled.mnemonic != "push" and lhs_is_stack_memory(compiled, context.policy):
+            if (
+                not context.include_stack_locals
+                and compiled.mnemonic != "push"
+                and lhs_is_stack_memory(compiled, context.policy)
+            ):
                 continue
             warning = report_string_mismatch(
                 compiled_instrs, original_instrs,
@@ -752,7 +791,11 @@ def compare_instruction_pair(
 
         if "immediates" not in context.enabled_kinds:
             continue
-        if compiled.mnemonic != "push" and lhs_is_stack_memory(compiled, context.policy):
+        if (
+            not context.include_stack_locals
+            and compiled.mnemonic != "push"
+            and lhs_is_stack_memory(compiled, context.policy)
+        ):
             continue
         if is_stack_adjustment(compiled) and is_stack_adjustment(original):
             continue
@@ -783,7 +826,7 @@ def compare_instruction_pair(
                 continue
             if not member_displacement(c_op.disp, context.policy) or not member_displacement(o_op.disp, context.policy):
                 continue
-            if not comparable_lhs(c_op, o_op, context.policy):
+            if not comparable_lhs(c_op, o_op, context.policy, context.include_stack_locals):
                 continue
             c_near = nearby_memory_displacements(compiled_instrs, ci, context.policy, compiled.mnemonic)
             o_near = nearby_memory_displacements(original_instrs, oi, context.policy, original.mnemonic)
@@ -792,7 +835,15 @@ def compare_instruction_pair(
             if same_effective_lea_displacement(compiled_instrs, original_instrs, ci, oi, c_op, o_op, context.policy):
                 continue
             if equivalent_shifted_memory_base(
-                compiled_instrs, original_instrs, ci, oi, idx, c_op, o_op, context.policy
+                compiled_instrs,
+                original_instrs,
+                ci,
+                oi,
+                idx,
+                c_op,
+                o_op,
+                context.policy,
+                context.include_stack_locals,
             ):
                 continue
             if (c_op.disp == 0 or o_op.disp == 0) and (has_pointer_immediate(compiled) or has_pointer_immediate(original)):
@@ -962,6 +1013,7 @@ def check_values(target: ProjectTarget, policy: VerifierPolicy, options: ValuesO
     context = CompareContext(
         enabled_kinds=options.enabled_kinds,
         policy=policy,
+        include_stack_locals=options.include_stack_locals,
         compiled_diagnostic_targets=rebuilt_diag_targets,
         original_diagnostic_targets=original_diag_targets,
     )

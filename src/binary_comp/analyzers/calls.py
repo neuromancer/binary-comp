@@ -197,7 +197,7 @@ def iter_cpp_files(source_dirs: tuple[str, ...], map_skip: str | None = None):
             if map_skip and map_skip in root:
                 continue
             for filename in sorted(files):
-                if filename.endswith(".cpp"):
+                if filename.endswith((".cpp", ".c", ".C")):
                     yield os.path.join(root, filename)
 
 

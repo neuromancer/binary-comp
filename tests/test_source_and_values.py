@@ -16,9 +16,11 @@ from binary_comp.analyzers.calls import (
 )
 from binary_comp.analyzers.values import (
     CheckResult,
+    CompareContext,
     ValuesOptions,
     ValuesSummary,
     check_values,
+    compare_instruction_pair,
     format_summary,
     load_policy,
     same_effective_lea_displacement,
@@ -199,6 +201,29 @@ def test_source_groups_map_to_rebuilt_symbols(fixture_root):
     assert "sample.obj" in entries_by_obj
 
 
+def test_source_groups_include_c_files_and_map_to_obj(tmp_path):
+    source_dir = tmp_path / "src"
+    source_dir.mkdir()
+    (source_dir / "module.c").write_text(
+        "/* Function start: 0x00401000 */\nint c_function(void) { return 1; }\n",
+        encoding="utf-8",
+    )
+    map_path = tmp_path / "rebuilt.map"
+    map_path.write_text(
+        " 0001:00000000       _c_function 00401000 f module.obj\n",
+        encoding="utf-8",
+    )
+
+    groups_by_source = load_source_groups((str(source_dir),))
+    mapped, missing, entries_by_obj = map_source_groups(groups_by_source, str(map_path))
+
+    assert not missing
+    assert len(mapped) == 1
+    assert mapped[0].name == "c_function"
+    assert mapped[0].rebuilt_symbol == "_c_function"
+    assert "module.obj" in entries_by_obj
+
+
 def test_load_minimal_project_config(fixture_root):
     _, target = load_project_target(str(fixture_root / "binary-comp.json"), "full")
 
@@ -306,6 +331,42 @@ def test_value_summary_includes_mismatch_breakdown():
     assert "By kind: IMM 1, STRING 1, OFFSET 1" in text
     assert "  A::Run: 2 (IMM 1, STRING 1; 91.5%)" in text
     assert "  B::Run: 1 (OFFSET 1; 95.0%)" in text
+
+
+def test_stack_local_offsets_are_opt_in():
+    policy = load_policy()
+    compiled = [
+        Instruction(0x1000, "lea", "eax, [ebp - 0x20]", (
+            Operand("reg", "eax", reg="eax"),
+            Operand("mem", "", base="ebp", scale=1, disp=-0x20),
+        ), "lea eax, [ebp - 0x20]"),
+    ]
+    original = [
+        Instruction(0x2000, "lea", "eax, [ebp - 0x40]", (
+            Operand("reg", "eax", reg="eax"),
+            Operand("mem", "", base="ebp", scale=1, disp=-0x40),
+        ), "lea eax, [ebp - 0x40]"),
+    ]
+    default_context = CompareContext(
+        enabled_kinds=frozenset({"offsets"}),
+        policy=policy,
+        include_stack_locals=False,
+        compiled_diagnostic_targets=frozenset(),
+        original_diagnostic_targets=frozenset(),
+    )
+    stack_context = CompareContext(
+        enabled_kinds=frozenset({"offsets"}),
+        policy=policy,
+        include_stack_locals=True,
+        compiled_diagnostic_targets=frozenset(),
+        original_diagnostic_targets=frozenset(),
+    )
+
+    assert compare_instruction_pair(compiled, original, None, None, 0, 0, default_context) == []
+
+    warnings = compare_instruction_pair(compiled, original, None, None, 0, 0, stack_context)
+    assert len(warnings) == 1
+    assert warnings[0][0] == "offset"
 
 
 def test_value_offsets_compare_effective_alias_after_pointer_increment():
