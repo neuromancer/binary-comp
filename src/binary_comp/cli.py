@@ -16,12 +16,22 @@ from binary_comp.analyzers.data import (
     format_missing_globals,
     require_globals_source,
 )
+from binary_comp.analyzers.function_compare import (
+    FunctionCompareError,
+    FunctionComparer,
+    format_comparison as format_function_comparison,
+)
 from binary_comp.analyzers.global_access import (
     GlobalAccessOptions,
     check_global_accesses,
     format_global_access_summary,
 )
 from binary_comp.analyzers.globals import GlobalsAuditOptions, audit_globals, format_report
+from binary_comp.analyzers.report import (
+    SimilarityReportOptions,
+    format_similarity_report,
+    generate_similarity_report,
+)
 from binary_comp.analyzers.values import ValuesOptions, check_values, format_summary, load_policy
 from binary_comp.analyzers.vtables import VtableOptions, check_vtables, format_vtable_summary
 from binary_comp.config import ConfigError, DEFAULT_CONFIG_PATH, load_project_target
@@ -107,6 +117,24 @@ def add_data_parser(subparsers) -> None:
                         help="Exclude an address range from --find-missing scanning; "
                              "format START:END (END exclusive). May be repeated.")
     parser.set_defaults(handler=run_data)
+
+
+def add_compare_parser(subparsers) -> None:
+    parser = subparsers.add_parser("compare", help="Compare one rebuilt function against original bytes")
+    parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
+    parser.add_argument("--target", default="full", help="Target name from config (default: full)")
+    parser.add_argument("function_name", help="Function name to compare")
+    parser.add_argument("disassembled_code", help="Path to the Ghidra disassembly export for the function")
+    parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
+    parser.set_defaults(handler=run_compare)
+
+
+def add_report_parser(subparsers) -> None:
+    parser = subparsers.add_parser("report", help="Generate a whole-project function similarity report")
+    parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
+    parser.add_argument("--target", default="full", help="Target name from config (default: full)")
+    parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
+    parser.set_defaults(handler=run_report)
 
 
 def add_globals_parser(subparsers) -> None:
@@ -343,6 +371,37 @@ def run_data(args) -> int:
     return 0 if summary.mismatches == 0 else 1
 
 
+def run_compare(args) -> int:
+    try:
+        _, target = load_project_target(args.config, args.target)
+        comparison = FunctionComparer(target).compare(
+            args.function_name,
+            args.disassembled_code,
+            build=not args.no_build,
+        )
+    except (ConfigError, FileNotFoundError, RuntimeError, ValueError, FunctionCompareError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(format_function_comparison(comparison))
+    return 0
+
+
+def run_report(args) -> int:
+    try:
+        _, target = load_project_target(args.config, args.target)
+        report = generate_similarity_report(
+            target,
+            SimilarityReportOptions(build=not args.no_build),
+        )
+    except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(format_similarity_report(report))
+    return 0
+
+
 def run_globals(args) -> int:
     try:
         config, target = load_project_target(args.config, args.target)
@@ -390,9 +449,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="binary-comp")
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_calls_parser(subparsers)
+    add_compare_parser(subparsers)
     add_data_parser(subparsers)
     add_global_access_parser(subparsers)
     add_globals_parser(subparsers)
+    add_report_parser(subparsers)
     add_values_parser(subparsers)
     add_vtables_parser(subparsers)
     return parser

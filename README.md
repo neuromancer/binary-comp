@@ -10,9 +10,11 @@ global declaration audits, and vtable verification:
 
 ```bash
 binary-comp calls --config path/to/binary-comp.json --target full
+binary-comp compare --config path/to/binary-comp.json --target full FunctionName code/FUN_ADDR.disassembled.txt
 binary-comp values --config path/to/binary-comp.json --target full
 binary-comp data --config path/to/binary-comp.json --target full
 binary-comp globals --config path/to/binary-comp.json --target full
+binary-comp report --config path/to/binary-comp.json --target full
 binary-comp vtables --config path/to/binary-comp.json --target full
 ```
 
