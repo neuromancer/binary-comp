@@ -14,11 +14,22 @@ class MapEntry:
     object_file: str
 
 
+@dataclass(frozen=True)
+class EncodedAddressMapEntry:
+    original_va: int
+    rebuilt_va: int
+    symbol: str
+    object_file: str | None
+
+
 FUNCTION_LINE_RE = re.compile(
     r"0001:[0-9a-fA-F]+\s+(\S+)\s+([0-9a-fA-F]{8})\s+f\s+(\S+\.obj)"
 )
-ENCODED_ADDRESS_SYMBOL_RE = re.compile(
-    r"[\?_]\w+_([0-9a-fA-F]{6,8})(?:@@\S*)?\s+([0-9a-fA-F]{8})"
+MAP_SYMBOL_LINE_RE = re.compile(
+    r"\s*[0-9a-fA-F]{4}:[0-9a-fA-F]+\s+(\S+)\s+([0-9a-fA-F]{8})(?:\s+(\S+))?"
+)
+ENCODED_ADDRESS_SUFFIX_RE = re.compile(
+    r"_([0-9a-fA-F]{6,8})(?:@@\S*)?$"
 )
 
 
@@ -56,16 +67,32 @@ def parse_encoded_address_map(map_path: str) -> dict[int, int]:
     returns symbols whose names contain a 6-8 digit hex suffix.
     """
     mapping: dict[int, int] = {}
+    for entry in parse_encoded_address_symbols(map_path):
+        mapping[entry.original_va] = entry.rebuilt_va
+    return mapping
+
+
+def parse_encoded_address_symbols(map_path: str) -> list[EncodedAddressMapEntry]:
+    """Return rebuilt map symbols whose names encode an original address."""
+    entries: list[EncodedAddressMapEntry] = []
     if not os.path.exists(map_path):
-        return mapping
+        return entries
 
     with open(map_path, "r", encoding="latin1", errors="ignore") as f:
         for line in f:
-            match = ENCODED_ADDRESS_SYMBOL_RE.search(line)
-            if not match:
+            line_match = MAP_SYMBOL_LINE_RE.match(line)
+            if not line_match:
                 continue
-            original_va = int(match.group(1), 16)
-            rebuilt_va = int(match.group(2), 16)
-            mapping[original_va] = rebuilt_va
+            symbol = line_match.group(1)
+            address_match = ENCODED_ADDRESS_SUFFIX_RE.search(symbol)
+            if not address_match:
+                continue
+            entries.append(EncodedAddressMapEntry(
+                original_va=int(address_match.group(1), 16),
+                rebuilt_va=int(line_match.group(2), 16),
+                symbol=symbol,
+                object_file=line_match.group(3),
+            ))
 
-    return mapping
+    entries.sort(key=lambda entry: (entry.original_va, entry.symbol, entry.rebuilt_va))
+    return entries

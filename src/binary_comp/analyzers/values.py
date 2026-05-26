@@ -985,7 +985,7 @@ def check_values(target: ProjectTarget, policy: VerifierPolicy, options: ValuesO
         if not os.path.exists(path):
             raise FileNotFoundError(f"missing {label}: {path}")
 
-    groups_by_source = load_source_groups(target.source_dirs, target.map_skip)
+    groups_by_source = load_source_groups(target.source_dirs, target.map_skip, target.source_excludes)
     mapped_groups, missing_groups, entries_by_obj = map_source_groups(groups_by_source, target.map_path)
 
     if options.file_filter:

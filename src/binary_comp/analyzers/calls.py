@@ -139,7 +139,7 @@ def canonicalize(name: str, policy: CallsPolicy, strict_memory: bool = False) ->
 
 
 def iter_source_address_names(target: ProjectTarget, policy: CallsPolicy):
-    for cpp_file in iter_cpp_files(target.source_dirs, target.map_skip):
+    for cpp_file in iter_cpp_files(target.source_dirs, target.map_skip, target.source_excludes):
         for addrs, func_name in iter_source_functions(cpp_file, policy, include_no_assembly=True):
             for addr in addrs:
                 yield addr, func_name
@@ -191,14 +191,25 @@ def apply_call_count_allowances(func_name: str, only_orig: Counter, only_compile
                 only_compiled.pop(name, None)
 
 
-def iter_cpp_files(source_dirs: tuple[str, ...], map_skip: str | None = None):
+def iter_cpp_files(
+    source_dirs: tuple[str, ...],
+    map_skip: str | None = None,
+    source_excludes: tuple[str, ...] = (),
+):
+    excluded = {
+        os.path.normcase(os.path.abspath(path))
+        for path in source_excludes
+    }
     for source_dir in source_dirs:
         for root, _, files in os.walk(source_dir):
             if map_skip and map_skip in root:
                 continue
             for filename in sorted(files):
                 if filename.endswith((".cpp", ".c", ".C")):
-                    yield os.path.join(root, filename)
+                    path = os.path.join(root, filename)
+                    if os.path.normcase(os.path.abspath(path)) in excluded:
+                        continue
+                    yield path
 
 
 def iter_source_functions(cpp_file: str, policy: CallsPolicy, include_no_assembly: bool = False):
@@ -722,7 +733,7 @@ def select_functions(
 
     functions = []
     skipped_no_disasm = []
-    for cpp_file in sorted(iter_cpp_files(target.source_dirs, target.map_skip)):
+    for cpp_file in sorted(iter_cpp_files(target.source_dirs, target.map_skip, target.source_excludes)):
         occurrences = {}
         for addrs, func_name in iter_source_functions(cpp_file, policy):
             if not matches_filter(func_name, cpp_file, options.filters):

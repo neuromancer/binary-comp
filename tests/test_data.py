@@ -10,6 +10,8 @@ from binary_comp.analyzers.data import (
     format_comparison,
     format_missing_globals,
 )
+from binary_comp.analyzers.globals import GlobalDecl as AuditGlobalDecl, build_rebuilt_layout_issues
+from binary_comp.core.mapfile import parse_encoded_address_symbols
 from binary_comp.source.globals import parse_globals_source
 
 
@@ -113,6 +115,39 @@ def test_compare_one_address_uses_map(fixture_root, sample_binaries):
 
     assert comparison.matches
     assert comparison.rebuilt_address == 0x402010
+
+
+def test_parse_encoded_address_symbols_keeps_symbol_names(tmp_path):
+    map_path = tmp_path / "rebuilt.map"
+    map_path.write_text(
+        " 0003:00000000       ?g_Text_00402000@@3PADA 00402000     globals.obj\n"
+        " 0003:0004ff20       _g_Block_00488158      004b5f20     <common>\n",
+        encoding="utf-8",
+    )
+
+    entries = parse_encoded_address_symbols(str(map_path))
+
+    assert [(entry.original_va, entry.rebuilt_va, entry.symbol) for entry in entries] == [
+        (0x402000, 0x402000, "?g_Text_00402000@@3PADA"),
+        (0x488158, 0x4B5F20, "_g_Block_00488158"),
+    ]
+
+
+def test_rebuilt_layout_check_reports_split_overlapping_globals(tmp_path):
+    map_path = tmp_path / "rebuilt.map"
+    map_path.write_text(
+        " 0003:00000000       _g_Block_00402000      00406000     <common>\n"
+        " 0003:00000010       _g_Field_00402004      00406100     <common>\n",
+        encoding="utf-8",
+    )
+    block = AuditGlobalDecl(0x402000, "g_Block_00402000", "", 1, "char", ["16"], False, None, 16)
+    field = AuditGlobalDecl(0x402004, "g_Field_00402004", "", 2, "int", [], False, None, 4)
+
+    issues = build_rebuilt_layout_issues([block, field], str(map_path), 0)
+
+    assert len(issues) == 1
+    assert issues[0].category == "REBUILT_LAYOUT_ALIAS_SPLIT"
+    assert "expected 0x00406004" in issues[0].detail
 
 
 def test_find_missing_globals_reports_uncovered_dwords(fixture_root, tmp_path):

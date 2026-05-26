@@ -36,6 +36,7 @@ class ProjectTarget:
     rebuilt_exe: str
     map_path: str
     source_dirs: tuple[str, ...]
+    source_excludes: tuple[str, ...] = ()
     globals_source: str | None = None
     globals_header: str | None = None
     code_globals_header: str | None = None
@@ -164,6 +165,10 @@ def _target_from_standalone(config: dict[str, Any], target: str, base: Path) -> 
         target_cfg.get("source_dirs") or target_cfg.get("source_dir"),
         f"targets.{target}.source_dirs",
     )
+    source_excludes = _source_dirs(
+        target_cfg.get("source_excludes") or target_cfg.get("source_exclude"),
+        f"targets.{target}.source_excludes",
+    )
     return ProjectTarget(
         name=target,
         original_exe=_resolve_standalone_path(
@@ -176,6 +181,7 @@ def _target_from_standalone(config: dict[str, Any], target: str, base: Path) -> 
         ) or "",
         map_path=_resolve_standalone_path(require_string(target_cfg, "map", f"targets.{target}.map"), base) or "",
         source_dirs=_resolve_standalone_paths(source_dirs, base),
+        source_excludes=_resolve_standalone_paths(source_excludes, base),
         globals_source=_resolve_standalone_path(optional_string(target_cfg, "globals_source"), base),
         globals_header=_resolve_standalone_path(optional_string(target_cfg, "globals_header"), base),
         code_globals_header=_resolve_standalone_path(optional_string(target_cfg, "code_globals_header"), base),

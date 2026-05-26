@@ -24,21 +24,37 @@ class FunctionGroup:
 
 
 def iter_cpp_files(source_dirs: tuple[str, ...], map_skip: str | None = None):
+    yield from iter_cpp_files_excluding(source_dirs, map_skip)
+
+
+def iter_cpp_files_excluding(
+    source_dirs: tuple[str, ...],
+    map_skip: str | None = None,
+    source_excludes: tuple[str, ...] = (),
+):
+    excluded = {
+        os.path.normcase(os.path.abspath(path))
+        for path in source_excludes
+    }
     for source_dir in source_dirs:
         for root, _, files in os.walk(source_dir):
             if map_skip and map_skip in root:
                 continue
             for filename in sorted(files):
                 if filename.endswith(SOURCE_EXTENSIONS):
-                    yield os.path.join(root, filename)
+                    path = os.path.join(root, filename)
+                    if os.path.normcase(os.path.abspath(path)) in excluded:
+                        continue
+                    yield path
 
 
 def load_source_groups(
     source_dirs: tuple[str, ...],
     map_skip: str | None = None,
+    source_excludes: tuple[str, ...] = (),
 ) -> dict[str, list[SourceFunctionGroup]]:
     groups_by_source: dict[str, list[SourceFunctionGroup]] = {}
-    for path in iter_cpp_files(source_dirs, map_skip):
+    for path in iter_cpp_files_excluding(source_dirs, map_skip, source_excludes):
         groups = parse_source_function_groups(path, include_no_assembly=False)
         if groups:
             groups_by_source[path] = groups

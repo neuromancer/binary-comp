@@ -17,6 +17,7 @@ except ImportError:
     X86_OP_IMM = X86_OP_MEM = X86_OP_REG = None
 
 from binary_comp.config import ConfigError, ProjectTarget, parse_int
+from binary_comp.core.mapfile import parse_encoded_address_symbols
 from binary_comp.core.pe import PEImage
 from binary_comp.source.cpp import make_cpp_parser, node_text, parse_source_functions, sanitize_source, walk
 
@@ -152,11 +153,13 @@ class GlobalsAuditOptions:
     show_auto_complete_reviewed: bool = False
     no_source_order: bool = False
     source_order_all: bool = False
+    check_rebuilt_layout: bool = False
 
 
 @dataclass
 class GlobalsAuditInputs:
     exe: str
+    map_path: str
     globals_source: str
     globals_h: str | None
     code_globals_h: str | None
@@ -179,6 +182,7 @@ class GlobalsAuditInputs:
     show_auto_complete_reviewed: bool
     no_source_order: bool
     source_order_all: bool
+    check_rebuilt_layout: bool
 
 
 @dataclass
@@ -1492,6 +1496,84 @@ def is_cpp_vtable_placeholder(name: str) -> bool:
     return "_vtable" in name.lower()
 
 
+def normalize_map_symbol(symbol: str) -> str:
+    if symbol.startswith("_"):
+        return symbol[1:]
+    if symbol.startswith("?"):
+        match = re.match(r"\?([^@]+)@@", symbol)
+        if match:
+            return match.group(1)
+    return symbol
+
+
+def rebuilt_symbol_indexes(map_path: str) -> tuple[dict[tuple[int, str], int], dict[int, list[tuple[str, int]]]]:
+    exact: dict[tuple[int, str], int] = {}
+    by_address: dict[int, list[tuple[str, int]]] = {}
+    for entry in parse_encoded_address_symbols(map_path):
+        name = normalize_map_symbol(entry.symbol)
+        by_address.setdefault(entry.original_va, []).append((name, entry.rebuilt_va))
+        exact[(entry.original_va, name)] = entry.rebuilt_va
+    return exact, by_address
+
+
+def rebuilt_va_for_decl(decl: GlobalDecl,
+                        exact: dict[tuple[int, str], int],
+                        by_address: dict[int, list[tuple[str, int]]]) -> Optional[int]:
+    rebuilt = exact.get((decl.address, decl.name))
+    if rebuilt is not None:
+        return rebuilt
+    matches = by_address.get(decl.address, [])
+    if len(matches) == 1:
+        return matches[0][1]
+    return None
+
+
+def build_rebuilt_layout_issues(decls: List[GlobalDecl],
+                                map_path: str,
+                                min_address: int) -> List[Issue]:
+    exact, by_address = rebuilt_symbol_indexes(map_path)
+    if not by_address:
+        return []
+
+    by_addr = sorted(
+        [decl for decl in decls if not is_cpp_vtable_placeholder(decl.name)],
+        key=lambda d: d.address,
+    )
+    issues: List[Issue] = []
+    for i, decl in enumerate(by_addr):
+        if decl.address < min_address or decl.size is None or decl.size <= 0:
+            continue
+        decl_rebuilt = rebuilt_va_for_decl(decl, exact, by_address)
+        if decl_rebuilt is None:
+            continue
+        end = decl.address + decl.size
+        for other in by_addr[i + 1:]:
+            if other.address >= end:
+                break
+            if other.address < min_address:
+                continue
+            other_rebuilt = rebuilt_va_for_decl(other, exact, by_address)
+            if other_rebuilt is None:
+                continue
+            offset = other.address - decl.address
+            expected = decl_rebuilt + offset
+            if other_rebuilt == expected:
+                continue
+            issues.append(Issue(
+                "REBUILT_LAYOUT_ALIAS_SPLIT",
+                decl.address,
+                decl.name,
+                decl.line,
+                decl.size,
+                b"",
+                None,
+                f"covers {other.name} at 0x{other.address:08x} (+0x{offset:x}), "
+                f"but rebuilt symbols are 0x{decl_rebuilt:08x} and 0x{other_rebuilt:08x}; "
+                f"expected 0x{expected:08x}",
+            ))
+    return issues
+
+
 def build_issues(pe: PEImage,
                  decls: List[GlobalDecl],
                  header_decls: List[GlobalDecl],
@@ -1596,9 +1678,12 @@ def build_issues(pe: PEImage,
                                     original[:decl.size], decl.source_bytes[:decl.size],
                                     decl.source_note))
 
+    source_ranges = ranges_for(decls)
     defined_names = {decl.name for decl in decls}
     for decl in header_decls:
         if decl.name in defined_names or decl.address < min_address:
+            continue
+        if in_any_range(decl.address, source_ranges):
             continue
         size = infer_size(decl, constants, None) or 4
         if size > 0x1000:
@@ -1608,7 +1693,6 @@ def build_issues(pe: PEImage,
             issues.append(Issue("HEADER_EXTERN_NO_GLOBALS_C_DEF", decl.address, decl.name, decl.line,
                                 size, original, None, "extern in globals.h has no source definition"))
 
-    source_ranges = ranges_for(decls)
     if include_code_globals:
         seen_code = set()
         for entry in code_globals:
@@ -1753,6 +1837,7 @@ def resolve_audit_inputs(config: dict[str, Any], target: ProjectTarget, options:
 
     return GlobalsAuditInputs(
         exe=target.original_exe,
+        map_path=target.map_path,
         globals_source=require_path(options.globals_source or target.globals_source, "globals_source"),
         globals_h=options.globals_header or target.globals_header,
         code_globals_h=options.code_globals_header or target.code_globals_header,
@@ -1775,6 +1860,7 @@ def resolve_audit_inputs(config: dict[str, Any], target: ProjectTarget, options:
         show_auto_complete_reviewed=options.show_auto_complete_reviewed,
         no_source_order=options.no_source_order,
         source_order_all=options.source_order_all,
+        check_rebuilt_layout=options.check_rebuilt_layout,
     )
 
 
@@ -1797,6 +1883,9 @@ def audit_globals(config: dict[str, Any], target: ProjectTarget, options: Global
                           runtime_initializer_copies,
                           inputs.min_address, inputs.include_code_globals, inputs.include_symbolic,
                           not inputs.no_source_order, inputs.source_order_all)
+    if inputs.check_rebuilt_layout:
+        issues.extend(build_rebuilt_layout_issues(decls, inputs.map_path, inputs.min_address))
+        issues.sort(key=lambda x: (x.address, x.category, x.name))
     if inputs.max_address is not None:
         issues = [issue for issue in issues if issue.address <= inputs.max_address]
     if inputs.issue_kinds:

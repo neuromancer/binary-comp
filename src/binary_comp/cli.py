@@ -177,6 +177,8 @@ def add_globals_parser(subparsers) -> None:
                         help="Disable source-order decrease warnings for implicit-zero globals")
     parser.add_argument("--source-order-all", action="store_true",
                         help="Warn on source-order decreases for initialized globals too")
+    parser.add_argument("--check-rebuilt-layout", action="store_true",
+                        help="Report overlapping source globals whose rebuilt MAP symbols are split apart")
     parser.add_argument("--fail-on-issues", action="store_true", help="Exit 1 when suspicious issues are found")
     parser.add_argument("--fail-on-warnings", action="store_true",
                         help="Exit 1 when globals without address annotations are found")
@@ -309,6 +311,20 @@ def extract_globals_type_sizes(config: dict) -> dict[str, int]:
     return out
 
 
+def extract_canonical_aliases(config: dict) -> dict[str, str]:
+    calls = config.get("calls", {})
+    if not isinstance(calls, dict):
+        return {}
+    aliases = calls.get("canonical_aliases", {})
+    if not isinstance(aliases, dict):
+        return {}
+    return {
+        str(source): str(target)
+        for source, target in aliases.items()
+        if isinstance(source, str) and isinstance(target, str) and source and target
+    }
+
+
 def parse_skip_ranges(values: list[str]) -> tuple[tuple[int, int], ...]:
     ranges: list[tuple[int, int]] = []
     for value in values or ():
@@ -373,8 +389,8 @@ def run_data(args) -> int:
 
 def run_compare(args) -> int:
     try:
-        _, target = load_project_target(args.config, args.target)
-        comparison = FunctionComparer(target).compare(
+        config, target = load_project_target(args.config, args.target)
+        comparison = FunctionComparer(target, canonical_aliases=extract_canonical_aliases(config)).compare(
             args.function_name,
             args.disassembled_code,
             build=not args.no_build,
@@ -389,10 +405,13 @@ def run_compare(args) -> int:
 
 def run_report(args) -> int:
     try:
-        _, target = load_project_target(args.config, args.target)
+        config, target = load_project_target(args.config, args.target)
         report = generate_similarity_report(
             target,
-            SimilarityReportOptions(build=not args.no_build),
+            SimilarityReportOptions(
+                build=not args.no_build,
+                canonical_aliases=extract_canonical_aliases(config),
+            ),
         )
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -431,6 +450,7 @@ def run_globals(args) -> int:
                 show_auto_complete_reviewed=args.show_auto_complete_reviewed,
                 no_source_order=args.no_source_order,
                 source_order_all=args.source_order_all,
+                check_rebuilt_layout=args.check_rebuilt_layout,
             ),
         )
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:

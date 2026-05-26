@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from binary_comp.analyzers.calls import (
@@ -93,6 +95,19 @@ def test_call_policy_auto_aliases_same_original_address(tmp_path):
     effective = policy_with_same_address_aliases(target, policy)
 
     assert canonicalize("Alpha", effective) == "Beta"
+
+
+def test_source_groups_respect_excluded_files(tmp_path):
+    source_dir = tmp_path / "src"
+    source_dir.mkdir()
+    keep = source_dir / "keep.cpp"
+    skip = source_dir / "skip.cpp"
+    keep.write_text("/* Function start: 0x00401000 */\nvoid Keep() {}\n", encoding="utf-8")
+    skip.write_text("/* Function start: 0x00401010 */\nvoid Skip() {}\n", encoding="utf-8")
+
+    groups = load_source_groups((str(source_dir),), source_excludes=(str(skip),))
+
+    assert tuple(Path(path).name for path in groups) == ("keep.cpp",)
 
 
 def test_call_address_map_uses_named_disassembly_headers(tmp_path):
@@ -232,6 +247,7 @@ def test_load_minimal_project_config(fixture_root):
     assert target.rebuilt_exe == str(fixture_root / "rebuilt.exe")
     assert target.map_path == str(fixture_root / "rebuilt.map")
     assert target.source_dirs == (str(fixture_root / "src"),)
+    assert target.source_excludes == ()
     assert target.globals_source == str(fixture_root / "src" / "globals.cpp")
     assert target.globals_header == str(fixture_root / "src" / "globals.h")
     assert target.code_globals_header == str(fixture_root / "code" / "globals.h")
@@ -252,6 +268,7 @@ def test_standalone_values_policy_is_relative_to_config(tmp_path):
       "rebuilt_exe": "../rebuilt.exe",
       "map": "../rebuilt.map",
       "source_dirs": ["../src"],
+      "source_excludes": ["../src/generated.cpp"],
       "values": {"policy": "values-policy.json"}
     }
   }
@@ -263,6 +280,9 @@ def test_standalone_values_policy_is_relative_to_config(tmp_path):
     _, target = load_project_target(str(config_path), "full")
 
     assert target.values_policy == str(config_path.parent / "values-policy.json")
+    assert tuple(Path(path).resolve() for path in target.source_excludes) == (
+        (tmp_path / "src" / "generated.cpp").resolve(),
+    )
 
 
 def test_value_checker_on_generated_fixture_project(fixture_root, sample_binaries):
