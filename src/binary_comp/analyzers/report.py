@@ -25,6 +25,7 @@ from binary_comp.source.functions import load_source_groups
 class SimilarityReportOptions:
     build: bool = True
     canonical_aliases: dict[str, str] | None = None
+    file_filter: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class SimilarityReport:
     above_90: int
     below_90: int
     errors: int
+    missing_asm: int
     asm_fallbacks: int
 
 
@@ -187,18 +189,29 @@ def generate_similarity_report(
     below_90 = 0
     errors = 0
     asm_fallbacks = 0
+    missing_asm = 0
 
     for source_path in sorted(groups_by_source):
         source_file = os.path.basename(source_path)
+        if options.file_filter and options.file_filter not in source_file and options.file_filter not in source_path:
+            matching_groups = [
+                group for group in groups_by_source[source_path]
+                if options.file_filter in group.name
+            ]
+        else:
+            matching_groups = groups_by_source[source_path]
+        if not matching_groups:
+            continue
         occurrences: dict[str, int] = {}
-        for group in groups_by_source[source_path]:
+        for group in matching_groups:
             occurrence_index = occurrences.get(group.name, 0)
             occurrences[group.name] = occurrence_index + 1
             for address_text in group.addresses:
                 address = int(address_text, 16)
                 path = disassembly_path(target, address)
                 if path is None or not os.path.exists(path):
-                    rows.append(SimilarityReportRow(source_file, group.name, address, None, "N/A"))
+                    missing_asm += 1
+                    rows.append(SimilarityReportRow(source_file, group.name, address, None, "MISSING ASM"))
                     continue
 
                 try:
@@ -247,6 +260,7 @@ def generate_similarity_report(
         above_90=above_90,
         below_90=below_90,
         errors=errors,
+        missing_asm=missing_asm,
         asm_fallbacks=asm_fallbacks,
     )
 
@@ -269,6 +283,7 @@ def format_similarity_report(report: SimilarityReport) -> str:
         f"  >=90%: {report.above_90}",
         f"  <90%: {report.below_90}",
         f"  Errors/NOT FOUND: {report.errors}",
+        f"  Missing Ghidra asm: {report.missing_asm}",
         f"  ASM fallback: {report.asm_fallbacks}",
         f"  Average similarity: {average:.2f}%",
     ])

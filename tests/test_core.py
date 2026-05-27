@@ -38,6 +38,7 @@ def test_pe_image_reads_sections_and_strings(sample_binaries):
     image = PEImage(str(original))
 
     assert image.image_base == 0x400000
+    assert image.entry_point == TEXT_VA
     assert image.section_named(".text").start == TEXT_VA
     assert image.read(TEXT_VA, 1) == b"\xB8"
     assert image.c_string_at(DATA_VA) == "hello"

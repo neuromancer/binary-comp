@@ -37,6 +37,11 @@ pytest.importorskip("tree_sitter")
 pytest.importorskip("tree_sitter_cpp")
 
 
+class NoStringsImage:
+    def c_string_at(self, *_args, **_kwargs):
+        return None
+
+
 def test_source_function_groups_from_cpp_fixture(fixture_root):
     groups = parse_source_function_groups(str(fixture_root / "src" / "sample.cpp"))
 
@@ -389,6 +394,49 @@ def test_stack_local_offsets_are_opt_in():
     assert warnings[0][0] == "offset"
 
 
+def test_msvc_eh_state_stack_slot_is_not_a_value_mismatch():
+    policy = load_policy()
+    context = CompareContext(
+        enabled_kinds=frozenset({"immediates"}),
+        policy=policy,
+        include_stack_locals=True,
+        compiled_diagnostic_targets=frozenset(),
+        original_diagnostic_targets=frozenset(),
+    )
+
+    def eh_prefix(base: int) -> list[Instruction]:
+        return [
+            Instruction(base + 0, "mov", "eax, dword ptr fs:[0]", (), "mov eax, dword ptr fs:[0]"),
+            Instruction(base + 1, "push", "-1", (Operand("imm", "-1", imm=-1),), "push -1"),
+            Instruction(base + 2, "push", "0x401000", (Operand("imm", "0x401000", imm=0x401000),), "push 0x401000"),
+            Instruction(base + 3, "push", "eax", (Operand("reg", "eax", reg="eax"),), "push eax"),
+            Instruction(base + 4, "mov", "dword ptr fs:[0], esp", (), "mov dword ptr fs:[0], esp"),
+        ]
+
+    def eh_state_write(addr: int, imm: int) -> Instruction:
+        return Instruction(addr, "mov", f"dword ptr [ebp - 4], {imm}", (
+            Operand("mem", "", base="ebp", scale=1, disp=-4, size=4),
+            Operand("imm", str(imm), imm=imm, size=4),
+        ), f"mov dword ptr [ebp - 4], {imm}")
+
+    compiled = eh_prefix(0x1000) + [eh_state_write(0x1005, 0)]
+    original = eh_prefix(0x2000) + [eh_state_write(0x2005, 1)]
+
+    assert compare_instruction_pair(compiled, original, NoStringsImage(), NoStringsImage(), 5, 5, context) == []
+
+    warnings = compare_instruction_pair(
+        [eh_state_write(0x3000, 0)],
+        [eh_state_write(0x4000, 1)],
+        NoStringsImage(),
+        NoStringsImage(),
+        0,
+        0,
+        context,
+    )
+    assert len(warnings) == 1
+    assert warnings[0][0] == "imm"
+
+
 def test_value_offsets_compare_effective_alias_after_pointer_increment():
     policy = load_policy()
     compiled = [
@@ -436,3 +484,73 @@ def test_value_offsets_compare_effective_alias_after_pointer_increment():
         compiled, original, 3, 3,
         compiled[3].operands[1], original[3].operands[1], policy,
     )
+
+
+def test_value_immediates_compare_effective_stack_pointer_alias():
+    policy = load_policy()
+    context = CompareContext(
+        enabled_kinds=frozenset({"immediates"}),
+        policy=policy,
+        include_stack_locals=False,
+        compiled_diagnostic_targets=frozenset(),
+        original_diagnostic_targets=frozenset(),
+    )
+    compiled = [
+        Instruction(0x1000, "mov", "dword ptr [ebp - 4], eax", (
+            Operand("mem", "", base="ebp", scale=1, disp=-4, size=4),
+            Operand("reg", "eax", reg="eax"),
+        ), "mov dword ptr [ebp - 4], eax"),
+        Instruction(0x1004, "mov", "edx, dword ptr [ebp - 4]", (
+            Operand("reg", "edx", reg="edx"),
+            Operand("mem", "", base="ebp", scale=1, disp=-4, size=4),
+        ), "mov edx, dword ptr [ebp - 4]"),
+        Instruction(0x1008, "add", "edx, 0x3c", (
+            Operand("reg", "edx", reg="edx"),
+            Operand("imm", "60", imm=60),
+        ), "add edx, 0x3c"),
+    ]
+    original = [
+        Instruction(0x2000, "mov", "dword ptr [ebp - 4], eax", (
+            Operand("mem", "", base="ebp", scale=1, disp=-4, size=4),
+            Operand("reg", "eax", reg="eax"),
+        ), "mov dword ptr [ebp - 4], eax"),
+        Instruction(0x2004, "mov", "ecx, dword ptr [ebp - 4]", (
+            Operand("reg", "ecx", reg="ecx"),
+            Operand("mem", "", base="ebp", scale=1, disp=-4, size=4),
+        ), "mov ecx, dword ptr [ebp - 4]"),
+        Instruction(0x2008, "add", "ecx, 0x2c", (
+            Operand("reg", "ecx", reg="ecx"),
+            Operand("imm", "44", imm=44),
+        ), "add ecx, 0x2c"),
+        Instruction(0x200C, "mov", "dword ptr [ebp - 8], ecx", (
+            Operand("mem", "", base="ebp", scale=1, disp=-8, size=4),
+            Operand("reg", "ecx", reg="ecx"),
+        ), "mov dword ptr [ebp - 8], ecx"),
+        Instruction(0x2010, "mov", "edx, dword ptr [ebp - 8]", (
+            Operand("reg", "edx", reg="edx"),
+            Operand("mem", "", base="ebp", scale=1, disp=-8, size=4),
+        ), "mov edx, dword ptr [ebp - 8]"),
+        Instruction(0x2014, "add", "edx, 0x10", (
+            Operand("reg", "edx", reg="edx"),
+            Operand("imm", "16", imm=16),
+        ), "add edx, 0x10"),
+    ]
+
+    assert compare_instruction_pair(compiled, original, NoStringsImage(), NoStringsImage(), 2, 5, context) == []
+
+    changed_original = list(original)
+    changed_original[-1] = Instruction(0x2014, "add", "edx, 0x14", (
+        Operand("reg", "edx", reg="edx"),
+        Operand("imm", "20", imm=20),
+    ), "add edx, 0x14")
+    warnings = compare_instruction_pair(
+        compiled,
+        changed_original,
+        NoStringsImage(),
+        NoStringsImage(),
+        2,
+        5,
+        context,
+    )
+    assert len(warnings) == 1
+    assert warnings[0][0] == "imm"

@@ -23,6 +23,7 @@ class Section:
     end: int
     rawptr: int
     rawsize: int
+    virtual_size: int
     flags: int
 
     @property
@@ -45,7 +46,9 @@ class PEImage:
         section_count = struct.unpack_from("<H", self.data, peoff + 6)[0]
         optional_size = struct.unpack_from("<H", self.data, peoff + 20)[0]
         optional_header = peoff + 24
+        entry_point_rva = struct.unpack_from("<I", self.data, optional_header + 16)[0]
         self.image_base = struct.unpack_from("<I", self.data, optional_header + 28)[0]
+        self.entry_point = self.image_base + entry_point_rva
 
         self.sections: list[Section] = []
         section_table = optional_header + optional_size
@@ -56,7 +59,7 @@ class PEImage:
             flags = struct.unpack_from("<I", self.data, offset + 36)[0]
             start = self.image_base + rva
             end = start + max(virtual_size, raw_size)
-            self.sections.append(Section(name, start, end, raw_pointer, raw_size, flags))
+            self.sections.append(Section(name, start, end, raw_pointer, raw_size, virtual_size, flags))
 
     def section_for_va(self, va: int) -> Section | None:
         for section in self.sections:

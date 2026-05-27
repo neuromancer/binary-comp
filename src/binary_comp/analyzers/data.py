@@ -75,6 +75,13 @@ class AddressComparison:
         return self.original_data is not None and self.original_data == self.rebuilt_data
 
 
+@dataclass(frozen=True)
+class RelocatedAddressRange:
+    original_start: int
+    original_end: int
+    rebuilt_start: int
+
+
 def format_bytes(data: bytes | None, max_bytes: int = 32) -> str:
     if data is None:
         return "(not found)"
@@ -91,6 +98,64 @@ def format_value(data: bytes | None) -> str:
     return f"0x{value:08x} ({value})"
 
 
+def build_relocated_ranges(
+    globals_list: list[GlobalDecl],
+    address_map: dict[int, int],
+) -> tuple[RelocatedAddressRange, ...]:
+    ranges: list[RelocatedAddressRange] = []
+    for global_decl in globals_list:
+        rebuilt_address = address_map.get(global_decl.address)
+        if rebuilt_address is None or global_decl.size <= 0:
+            continue
+        ranges.append(RelocatedAddressRange(
+            original_start=global_decl.address,
+            original_end=global_decl.address + global_decl.size,
+            rebuilt_start=rebuilt_address,
+        ))
+    ranges.sort(key=lambda item: (item.original_start, item.original_end))
+    return tuple(ranges)
+
+
+def relocated_pointer_value(
+    value: int,
+    address_map: dict[int, int],
+    relocated_ranges: tuple[RelocatedAddressRange, ...],
+) -> int | None:
+    mapped = address_map.get(value)
+    if mapped is not None:
+        return mapped
+    for address_range in relocated_ranges:
+        if address_range.original_start <= value < address_range.original_end:
+            return address_range.rebuilt_start + (value - address_range.original_start)
+    return None
+
+
+def relocated_pointer_match(
+    original_data: bytes,
+    rebuilt_data: bytes,
+    address_map: dict[int, int],
+    relocated_ranges: tuple[RelocatedAddressRange, ...],
+) -> bool:
+    if len(original_data) != len(rebuilt_data):
+        return False
+
+    offset = 0
+    saw_relocated_pointer = False
+    while offset < len(original_data):
+        if offset + 4 <= len(original_data):
+            original_value = struct.unpack_from("<I", original_data, offset)[0]
+            rebuilt_value = struct.unpack_from("<I", rebuilt_data, offset)[0]
+            mapped_value = relocated_pointer_value(original_value, address_map, relocated_ranges)
+            if mapped_value is not None and rebuilt_value == mapped_value:
+                saw_relocated_pointer = True
+                offset += 4
+                continue
+        if original_data[offset] != rebuilt_data[offset]:
+            return False
+        offset += 1
+    return saw_relocated_pointer
+
+
 def compare_global_data(
     original_path: str,
     rebuilt_path: str,
@@ -98,12 +163,17 @@ def compare_global_data(
     globals_path: str,
     options: DataOptions | None = None,
     extra_type_sizes: dict[str, int] | None = None,
+    relocated_address_map: dict[int, int] | None = None,
 ) -> DataCompareSummary:
     options = options or DataOptions()
     original = PEImage(original_path)
     rebuilt = PEImage(rebuilt_path)
     address_map = parse_encoded_address_map(map_path)
+    pointer_address_map = dict(address_map)
+    if relocated_address_map:
+        pointer_address_map.update(relocated_address_map)
     globals_list = parse_globals_source(globals_path, extra_type_sizes)
+    relocated_ranges = build_relocated_ranges(globals_list, address_map)
 
     comparisons: list[GlobalComparison] = []
     matches = 0
@@ -127,6 +197,14 @@ def compare_global_data(
                 mismatches += 1
             elif original_data == rebuilt_data:
                 status = "OK"
+                matches += 1
+            elif relocated_pointer_match(
+                original_data,
+                rebuilt_data,
+                pointer_address_map,
+                relocated_ranges,
+            ):
+                status = "OK_PTR"
                 matches += 1
             else:
                 status = "MISMATCH"

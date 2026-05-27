@@ -412,7 +412,7 @@ def is_iat_address(addr: int) -> bool:
     return any(start <= addr < end for start, end in IAT_ADDRESS_RANGES)
 
 
-def parse_vtable_call(line: str, policy: CallsPolicy) -> str | None:
+def parse_indirect_call(line: str, policy: CallsPolicy) -> str | None:
     match = re.match(r"(?:CALL|JMP)\s+dword\s+ptr\s*\[\s*(?:0x)?([0-9a-fA-F]+)\s*\]", line, re.IGNORECASE)
     if match:
         try:
@@ -436,7 +436,7 @@ def parse_vtable_call(line: str, policy: CallsPolicy) -> str | None:
         if base == "ESP":
             return "__indirect__"
         offset = int(match.group(2), 16) if match.group(2) else 0
-        return f"vtable[0x{offset:x}]"
+        return f"indirect[0x{offset:x}]"
 
     match = re.match(r"(?:call|jmp)\s+DWORD\s+PTR\s*\[\s*(\w+)\s*(?:\+\s*(\d+))?\s*\]", line, re.IGNORECASE)
     if match:
@@ -444,7 +444,7 @@ def parse_vtable_call(line: str, policy: CallsPolicy) -> str | None:
         if base == "ESP":
             return "__indirect__"
         offset = int(match.group(2)) if match.group(2) else 0
-        return f"vtable[0x{offset:x}]"
+        return f"indirect[0x{offset:x}]"
     return None
 
 
@@ -486,9 +486,9 @@ def extract_calls_from_original(disasm_path: str, policy: CallsPolicy) -> list[s
                     calls.append(reg_map.get(reg, "__indirect__"))
                     continue
 
-                vtable = parse_vtable_call(line, policy)
-                if vtable:
-                    calls.append(vtable)
+                indirect = parse_indirect_call(line, policy)
+                if indirect:
+                    calls.append(indirect)
                     continue
 
                 if is_jump:
@@ -636,7 +636,7 @@ def extract_calls_from_compiled(
                 calls.append("__indirect__")
                 continue
             offset = int(match.group(2)) if match.group(2) else 0
-            calls.append(f"vtable[0x{offset:x}]")
+            calls.append(f"indirect[0x{offset:x}]")
             continue
 
         if full_target in ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp"):
@@ -815,7 +815,7 @@ def check_calls(config: dict[str, Any], target: ProjectTarget, options: CallsOpt
 
         compiled_resolved = [
             normalize_compiled(name, policy.signature_overloads)
-            if not name.startswith("vtable[") and not name.startswith("__")
+            if not name.startswith("indirect[") and not name.startswith("__")
             else name
             for name in compiled_raw
         ]
@@ -838,8 +838,8 @@ def check_calls(config: dict[str, Any], target: ProjectTarget, options: CallsOpt
         compiled_canon = [canonicalize(name, policy, strict_memory=options.strict_memory) for name in compiled_resolved]
         orig_filtered = [name for name in orig_canon if name not in policy.skip_tokens]
         compiled_filtered = [name for name in compiled_canon if name not in policy.skip_tokens]
-        orig_filtered = ["__funcptr__" if name == "vtable[0x0]" else name for name in orig_filtered]
-        compiled_filtered = ["__funcptr__" if name == "vtable[0x0]" else name for name in compiled_filtered]
+        orig_filtered = ["__funcptr__" if name == "indirect[0x0]" else name for name in orig_filtered]
+        compiled_filtered = ["__funcptr__" if name == "indirect[0x0]" else name for name in compiled_filtered]
 
         orig_counter = Counter(orig_filtered)
         compiled_counter = Counter(compiled_filtered)

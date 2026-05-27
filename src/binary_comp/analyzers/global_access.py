@@ -35,6 +35,11 @@ WRITE_MNEMONICS = {
     "xchg",
 }
 
+REGISTER_WRITE_MNEMONICS = WRITE_MNEMONICS | {
+    "movsx",
+    "movzx",
+}
+
 READ_WRITE_MNEMONICS = {
     "adc",
     "add",
@@ -179,16 +184,29 @@ def is_string_constant_token(token: str) -> bool:
     return token_symbol(token).startswith("s_")
 
 
-REGISTER_NAMES = frozenset({
-    "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp",
-})
+REGISTER_ALIASES = {
+    "eax": "eax", "ax": "eax", "ah": "eax", "al": "eax",
+    "ebx": "ebx", "bx": "ebx", "bh": "ebx", "bl": "ebx",
+    "ecx": "ecx", "cx": "ecx", "ch": "ecx", "cl": "ecx",
+    "edx": "edx", "dx": "edx", "dh": "edx", "dl": "edx",
+    "esi": "esi", "si": "esi",
+    "edi": "edi", "di": "edi",
+    "ebp": "ebp", "bp": "ebp",
+    "esp": "esp", "sp": "esp",
+}
+
+REGISTER_NAMES = frozenset(REGISTER_ALIASES)
+CALL_CLOBBERED_REGISTERS = frozenset(("eax", "ecx", "edx"))
+
+
+def discard_call_clobbered_register_bases(register_bases: dict) -> None:
+    for register in CALL_CLOBBERED_REGISTERS:
+        register_bases.pop(register, None)
 
 
 def plain_register(operand: str) -> str | None:
     operand = operand.strip().lower()
-    if operand in REGISTER_NAMES:
-        return operand
-    return None
+    return REGISTER_ALIASES.get(operand)
 
 
 def referenced_register(operand: str) -> str | None:
@@ -248,8 +266,15 @@ def addresses_from_memory_operand(operand: str, register_bases: dict[str, int]) 
     return addresses
 
 
+STRING_INSTRUCTION_RE = re.compile(r"^(?:movs|cmps|scas|lods|stos)[bwdq]?(?:\.|$)")
+
+
+def is_string_instruction(mnemonic: str) -> bool:
+    return STRING_INSTRUCTION_RE.match(mnemonic) is not None
+
+
 def string_instruction_operands(mnemonic: str, operands: Sequence[str]) -> Sequence[str]:
-    if not mnemonic.startswith(("movs", "cmps", "scas", "lods", "stos")):
+    if not is_string_instruction(mnemonic):
         return ()
     if operands:
         return operands
@@ -272,7 +297,7 @@ def string_instruction_kind(mnemonic: str, operand_index: int) -> str:
 
 def update_original_register_bases(mnemonic: str, operands: Sequence[str], register_bases: dict[str, int]) -> None:
     if mnemonic == "call":
-        register_bases.clear()
+        discard_call_clobbered_register_bases(register_bases)
         return
     if mnemonic in ("cdq", "cwd", "idiv", "div"):
         register_bases.pop("eax", None)
@@ -283,21 +308,31 @@ def update_original_register_bases(mnemonic: str, operands: Sequence[str], regis
     dest = plain_register(operands[0])
     if dest is None:
         return
+    source_base = None
+    if len(operands) >= 2:
+        source = plain_register(operands[1])
+        if source is not None:
+            source_base = register_bases.get(source)
     if mnemonic in ("add", "sub") and len(operands) >= 2 and dest in register_bases:
         match = re.fullmatch(r"(?:0x[0-9A-Fa-f]+|[0-9A-Fa-f]+H|\d+)", operands[1].strip())
         if match:
             delta = parse_numeric_literal(operands[1])
             register_bases[dest] += -delta if mnemonic == "sub" else delta
             return
-    if mnemonic not in WRITE_MNEMONICS and mnemonic not in READ_WRITE_MNEMONICS and mnemonic != "lea":
+    lea_addresses = set()
+    if mnemonic == "lea" and len(operands) >= 2:
+        lea_addresses = addresses_from_memory_operand(operands[1], register_bases)
+    if mnemonic not in REGISTER_WRITE_MNEMONICS and mnemonic not in READ_WRITE_MNEMONICS and mnemonic != "lea":
         return
     register_bases.pop(dest, None)
     if mnemonic == "lea" and len(operands) >= 2:
-        addresses = addresses_from_memory_operand(operands[1], {})
-        if len(addresses) == 1:
-            register_bases[dest] = next(iter(addresses))
+        if len(lea_addresses) == 1:
+            register_bases[dest] = next(iter(lea_addresses))
         return
     if mnemonic == "mov" and len(operands) >= 2:
+        if source_base is not None:
+            register_bases[dest] = source_base
+            return
         match = re.fullmatch(r"(?:0x)?([0-9A-Fa-f]{6,8})", operands[1].strip())
         if match:
             register_bases[dest] = parse_original_address(match.group(1))
@@ -418,11 +453,12 @@ def extract_symbols_from_operand(operand: str, global_names: frozenset[str]) -> 
     is_address = "OFFSET FLAT:" in operand.upper()
     symbol_re = re.compile(
         r"\?([A-Za-z_][A-Za-z0-9_]*)@@[^\s,\]\+\[]*(?:\+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]+H|[0-9]+))?"
+        r"|(?<![A-Za-z0-9_?@])_([A-Za-z_][A-Za-z0-9_]*)(?:\+(0x[0-9A-Fa-f]+|[0-9A-Fa-f]+H|[0-9]+))?"
     )
     for match in symbol_re.finditer(operand):
-        name = match.group(1)
+        name = match.group(1) or match.group(3)
         if name in global_names:
-            offset = parse_asm_offset(match.group(2))
+            offset = parse_asm_offset(match.group(2) or match.group(4))
             tail = operand[match.end():].lstrip()
             if tail.startswith("["):
                 contents = bracket_contents(tail)
@@ -453,7 +489,7 @@ def update_compiled_register_bases(
     register_bases: dict[str, str],
 ) -> None:
     if mnemonic == "call":
-        register_bases.clear()
+        discard_call_clobbered_register_bases(register_bases)
         return
     if mnemonic in ("cdq", "cwd", "idiv", "div"):
         register_bases.pop("eax", None)
@@ -464,24 +500,38 @@ def update_compiled_register_bases(
     dest = plain_register(operands[0])
     if dest is None:
         return
+    source_base = None
+    if len(operands) >= 2:
+        source = plain_register(operands[1])
+        if source is not None:
+            source_base = register_bases.get(source)
     if mnemonic in ("add", "sub") and len(operands) >= 2 and dest in register_bases:
         match = re.fullmatch(r"(?:0x[0-9A-Fa-f]+|[0-9A-Fa-f]+H|\d+)", operands[1].strip())
         if match:
             delta = parse_numeric_literal(operands[1])
             register_bases[dest] = add_symbol_offset(register_bases[dest], -delta if mnemonic == "sub" else delta)
             return
-    if mnemonic not in WRITE_MNEMONICS and mnemonic not in READ_WRITE_MNEMONICS and mnemonic != "lea":
+    lea_symbols = set()
+    if mnemonic == "lea" and len(operands) >= 2:
+        direct_symbols = extract_symbols_from_operand(operands[1], global_names)
+        if direct_symbols:
+            lea_symbols = {symbol for symbol, _is_address in direct_symbols}
+        else:
+            lea_symbols = symbols_from_register_memory_operand(operands[1], register_bases)
+    if mnemonic not in REGISTER_WRITE_MNEMONICS and mnemonic not in READ_WRITE_MNEMONICS and mnemonic != "lea":
         return
     register_bases.pop(dest, None)
     if mnemonic == "mov" and len(operands) >= 2:
+        if source_base is not None:
+            register_bases[dest] = source_base
+            return
         symbols = extract_symbols_from_operand(operands[1], global_names)
         if len(symbols) == 1 and symbols[0][1]:
             register_bases[dest] = symbols[0][0]
         return
     if mnemonic == "lea" and len(operands) >= 2:
-        symbols = extract_symbols_from_operand(operands[1], global_names)
-        if len(symbols) == 1:
-            register_bases[dest] = symbols[0][0]
+        if len(lea_symbols) == 1:
+            register_bases[dest] = next(iter(lea_symbols))
 
 
 def asm_function_lines(

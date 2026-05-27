@@ -45,6 +45,7 @@ class ProjectTarget:
     code_dir: str | None = None
     asm_dir: str | None = None
     map_skip: str | None = None
+    library_ranges: tuple[tuple[int, int], ...] = ()
     build: BuildConfig = BuildConfig()
     values_policy: str | None = None
 
@@ -103,6 +104,24 @@ def _required_source_dirs(value: Any, label: str) -> tuple[str, ...]:
     if not paths:
         raise ConfigError(f"{label} must be a non-empty string or list of strings")
     return paths
+
+
+def _ranges(value: Any, label: str) -> tuple[tuple[int, int], ...]:
+    if value in (None, ""):
+        return ()
+    if not isinstance(value, list):
+        raise ConfigError(f"{label} must be a list of two-item ranges")
+    ranges: list[tuple[int, int]] = []
+    for index, item in enumerate(value):
+        item_label = f"{label}[{index}]"
+        if not isinstance(item, list) or len(item) != 2:
+            raise ConfigError(f"{item_label} must be a two-item range")
+        start = parse_int(item[0], f"{item_label}[0]")
+        end = parse_int(item[1], f"{item_label}[1]")
+        if end < start:
+            raise ConfigError(f"{item_label} end must be >= start")
+        ranges.append((start, end))
+    return tuple(ranges)
 
 
 def _resolve_standalone_path(value: str | None, base: Path) -> str | None:
@@ -202,6 +221,7 @@ def _target_from_standalone(config: dict[str, Any], target: str, base: Path) -> 
             base,
         ),
         map_skip=optional_string(target_cfg, "map_skip"),
+        library_ranges=_ranges(target_cfg.get("library_ranges"), f"targets.{target}.library_ranges"),
         build=build,
         values_policy=_resolve_standalone_path(policy, base),
     )
@@ -251,6 +271,7 @@ def _target_from_legacy(config: dict[str, Any], target: str) -> ProjectTarget:
         code_dir=optional_string(path_cfg, "code_dir"),
         asm_dir=optional_string(path_cfg, "out_dir"),
         map_skip=optional_string(path_cfg, "map_skip"),
+        library_ranges=_ranges(path_cfg.get("library_ranges"), f"paths.{target}.library_ranges"),
         build=BuildConfig(
             clean=f"make {optional_string(path_cfg, 'clean_target')}" if optional_string(path_cfg, "clean_target") else None,
             build=(

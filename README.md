@@ -4,13 +4,14 @@ Standalone binary comparison and verification tools for C/C++ reimplementation
 projects.
 
 The package is being extracted from project-specific scripts into reusable
-library modules plus a CLI. The current analyzers cover call target
-verification, Capstone-backed operand value checks, global data comparison,
-global declaration audits, and vtable verification:
+library modules plus a CLI. The current analyzers cover executable layout
+comparison, call target verification, Capstone-backed operand value checks,
+global data comparison, global declaration audits, and vtable verification:
 
 ```bash
 binary-comp calls --config path/to/binary-comp.json --target full
 binary-comp compare --config path/to/binary-comp.json --target full FunctionName code/FUN_ADDR.disassembled.txt
+binary-comp exe --config path/to/binary-comp.json --target demo --functions
 binary-comp values --config path/to/binary-comp.json --target full
 binary-comp data --config path/to/binary-comp.json --target full
 binary-comp globals --config path/to/binary-comp.json --target full
@@ -41,6 +42,8 @@ policy such as custom type sizes and reviewed auto-complete effects lives in
 top-level config sections when needed; absent optional sections are treated as
 empty. Function boundaries from a Ghidra export directory are hints only;
 operands and vtable writes are decoded from the binaries with Capstone.
+The executable comparer can use optional target `library_ranges` to exclude
+known CRT/library address ranges from function mapping summaries.
 
 The value checker prints a mismatch breakdown by operand kind and highlights
 the functions with the most mismatches. It also normalizes equivalent pointer
@@ -62,7 +65,8 @@ source annotations or config can be completed without guessing.
       "source_dirs": ["path/to/src"],
       "globals_source": "path/to/src/globals.cpp",
       "code_export_dir": "path/to/ghidra-export",
-      "asm_dir": "path/to/asm-output"
+      "asm_dir": "path/to/asm-output",
+      "library_ranges": [["0x00424540", "0x004304E0"]]
     }
   }
 }

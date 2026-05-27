@@ -21,6 +21,7 @@ from binary_comp.analyzers.function_compare import (
     FunctionComparer,
     format_comparison as format_function_comparison,
 )
+from binary_comp.analyzers.exe import ExeCompareOptions, compare_executable, format_executable_comparison
 from binary_comp.analyzers.global_access import (
     GlobalAccessOptions,
     check_global_accesses,
@@ -34,7 +35,8 @@ from binary_comp.analyzers.report import (
 )
 from binary_comp.analyzers.values import ValuesOptions, check_values, format_summary, load_policy
 from binary_comp.analyzers.vtables import VtableOptions, check_vtables, format_vtable_summary
-from binary_comp.config import ConfigError, DEFAULT_CONFIG_PATH, load_project_target
+from binary_comp.config import ConfigError, DEFAULT_CONFIG_PATH, ProjectTarget, load_project_target
+from binary_comp.source.functions import load_source_groups, map_source_groups
 
 
 def add_values_parser(subparsers) -> None:
@@ -129,10 +131,25 @@ def add_compare_parser(subparsers) -> None:
     parser.set_defaults(handler=run_compare)
 
 
+def add_exe_parser(subparsers) -> None:
+    parser = subparsers.add_parser("exe", help="Compare PE layout, section bytes, and optional function mapping")
+    parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
+    parser.add_argument("--target", default="full", help="Target name from config (default: full)")
+    parser.add_argument("--functions", action="store_true", help="Include function address and raw byte comparison")
+    parser.add_argument(
+        "--section",
+        action="append",
+        dest="sections",
+        help="Section to include in byte summary; can be repeated (default: .text, .rdata, .data)",
+    )
+    parser.set_defaults(handler=run_exe)
+
+
 def add_report_parser(subparsers) -> None:
     parser = subparsers.add_parser("report", help="Generate a whole-project function similarity report")
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
     parser.add_argument("--target", default="full", help="Target name from config (default: full)")
+    parser.add_argument("--filter", dest="file_filter", help="Only include matching source files or function names")
     parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
     parser.set_defaults(handler=run_report)
 
@@ -342,6 +359,20 @@ def parse_skip_ranges(values: list[str]) -> tuple[tuple[int, int], ...]:
     return tuple(ranges)
 
 
+def build_source_function_address_map(target: ProjectTarget) -> dict[int, int]:
+    groups_by_source = load_source_groups(
+        target.source_dirs,
+        target.map_skip,
+        target.source_excludes,
+    )
+    mapped_groups, _, _ = map_source_groups(groups_by_source, target.map_path)
+    mapping: dict[int, int] = {}
+    for group in mapped_groups:
+        for address in group.original_addrs:
+            mapping[address] = group.rebuilt_addr
+    return mapping
+
+
 def run_data(args) -> int:
     try:
         config, target = load_project_target(args.config, args.target)
@@ -378,6 +409,7 @@ def run_data(args) -> int:
             globals_source,
             DataOptions(section_name=args.section, verbose=args.verbose),
             extra_type_sizes=extra_type_sizes,
+            relocated_address_map=build_source_function_address_map(target),
         )
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -403,6 +435,24 @@ def run_compare(args) -> int:
     return 0
 
 
+def run_exe(args) -> int:
+    try:
+        _, target = load_project_target(args.config, args.target)
+        comparison = compare_executable(
+            target,
+            ExeCompareOptions(
+                byte_sections=tuple(args.sections) if args.sections else (".text", ".rdata", ".data"),
+                include_functions=args.functions,
+            ),
+        )
+    except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(format_executable_comparison(comparison))
+    return 0
+
+
 def run_report(args) -> int:
     try:
         config, target = load_project_target(args.config, args.target)
@@ -411,6 +461,7 @@ def run_report(args) -> int:
             SimilarityReportOptions(
                 build=not args.no_build,
                 canonical_aliases=extract_canonical_aliases(config),
+                file_filter=args.file_filter,
             ),
         )
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -471,6 +522,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_calls_parser(subparsers)
     add_compare_parser(subparsers)
     add_data_parser(subparsers)
+    add_exe_parser(subparsers)
     add_global_access_parser(subparsers)
     add_globals_parser(subparsers)
     add_report_parser(subparsers)

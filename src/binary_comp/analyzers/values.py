@@ -14,8 +14,8 @@ from binary_comp.core.disasm import (
     Instruction,
     Operand,
     disassemble_x86,
+    has_msvc_seh_frame,
     is_branch_or_call,
-    signed32,
     unsigned32,
 )
 from binary_comp.core.ghidra import function_starts_from_export_dir
@@ -279,6 +279,30 @@ def lhs_is_stack_memory(instr: Instruction, policy: VerifierPolicy) -> bool:
     return operand.kind == "mem" and operand.base in policy.stack_registers
 
 
+def is_msvc_eh_state_slot(operand: Operand) -> bool:
+    return operand.kind == "mem" and operand.base == "ebp" and not operand.index and operand.disp == -4
+
+
+def writes_msvc_eh_state(instr: Instruction) -> bool:
+    if not instr.operands:
+        return False
+    return is_msvc_eh_state_slot(instr.operands[0])
+
+
+def compare_targets_msvc_eh_state(
+    compiled_instrs: list[Instruction],
+    original_instrs: list[Instruction],
+    compiled: Instruction,
+    original: Instruction,
+    context: CompareContext,
+) -> bool:
+    if not context.include_stack_locals:
+        return False
+    if not (writes_msvc_eh_state(compiled) or writes_msvc_eh_state(original)):
+        return False
+    return has_msvc_seh_frame(compiled_instrs) or has_msvc_seh_frame(original_instrs)
+
+
 def has_stack_memory_operand(instr: Instruction, policy: VerifierPolicy) -> bool:
     return any(op.kind == "mem" and op.base in policy.stack_registers for op in instr.operands)
 
@@ -367,11 +391,52 @@ def writes_register(instr: Instruction, reg: str) -> bool:
     return operand.kind == "reg" and operand.reg == reg
 
 
-def update_register_aliases(aliases: dict[str, Operand], instr: Instruction, policy: VerifierPolicy) -> None:
+def stack_slot_key(operand: Operand, policy: VerifierPolicy) -> tuple[str, int] | None:
+    if operand.kind != "mem" or operand.base not in policy.stack_registers or operand.index:
+        return None
+    return (operand.base, operand.disp)
+
+
+def stack_slot_alias(operand: Operand, policy: VerifierPolicy) -> Operand | None:
+    key = stack_slot_key(operand, policy)
+    if key is None:
+        return None
+    return Operand("mem", "", base=f"stack:{key[0]}:{key[1]}", scale=1)
+
+
+def update_register_aliases(
+    aliases: dict[str, Operand],
+    instr: Instruction,
+    policy: VerifierPolicy,
+    stack_aliases: dict[tuple[str, int], Operand] | None = None,
+) -> None:
     if instr.mnemonic == "call":
         for reg in ("eax", "ecx", "edx"):
             aliases.pop(reg, None)
         return
+
+    if instr.mnemonic == "mov" and len(instr.operands) >= 2:
+        dst = instr.operands[0]
+        src = instr.operands[1]
+        if dst.kind == "reg" and src.kind == "mem":
+            key = stack_slot_key(src, policy)
+            if key is not None:
+                if stack_aliases is not None and key in stack_aliases:
+                    aliases[dst.reg] = stack_aliases[key]
+                else:
+                    alias = stack_slot_alias(src, policy)
+                    if alias is not None:
+                        aliases[dst.reg] = alias
+                return
+        if dst.kind == "mem" and src.kind == "reg":
+            key = stack_slot_key(dst, policy)
+            if stack_aliases is not None and key is not None:
+                alias = aliases.get(src.reg)
+                if alias is None:
+                    stack_aliases.pop(key, None)
+                else:
+                    stack_aliases[key] = alias
+                return
 
     if instr.mnemonic == "lea" and len(instr.operands) >= 2:
         dst = instr.operands[0]
@@ -440,8 +505,9 @@ def recent_pointer_alias(
 
 def register_alias_at(instrs: list[Instruction], idx: int, reg: str, policy: VerifierPolicy) -> Operand | None:
     aliases: dict[str, Operand] = {}
+    stack_aliases: dict[tuple[str, int], Operand] = {}
     for j in range(0, idx):
-        update_register_aliases(aliases, instrs[j], policy)
+        update_register_aliases(aliases, instrs[j], policy, stack_aliases)
     return aliases.get(reg)
 
 
@@ -495,6 +561,40 @@ def same_effective_lea_displacement(
     for c_alias in c_aliases or [None]:
         for o_alias in o_aliases or [None]:
             if equivalent_alias_displacement(c_alias, o_alias, c_op.disp, o_op.disp):
+                return True
+    return False
+
+
+def same_effective_register_immediate(
+    compiled_instrs: list[Instruction],
+    original_instrs: list[Instruction],
+    ci: int,
+    oi: int,
+    c_imm: int,
+    o_imm: int,
+    policy: VerifierPolicy,
+) -> bool:
+    compiled = compiled_instrs[ci]
+    original = original_instrs[oi]
+    if compiled.mnemonic not in {"add", "sub"} or original.mnemonic != compiled.mnemonic:
+        return False
+    if len(compiled.operands) < 2 or len(original.operands) < 2:
+        return False
+    c_dst = compiled.operands[0]
+    o_dst = original.operands[0]
+    if c_dst.kind != "reg" or o_dst.kind != "reg" or c_dst.reg != o_dst.reg:
+        return False
+
+    c_aliases = pointer_aliases_at(compiled_instrs, ci, c_dst.reg, policy)
+    o_aliases = pointer_aliases_at(original_instrs, oi, o_dst.reg, policy)
+    if not c_aliases and not o_aliases:
+        return False
+
+    c_delta = c_imm if compiled.mnemonic == "add" else -c_imm
+    o_delta = o_imm if original.mnemonic == "add" else -o_imm
+    for c_alias in c_aliases or [None]:
+        for o_alias in o_aliases or [None]:
+            if equivalent_alias_displacement(c_alias, o_alias, c_delta, o_delta):
                 return True
     return False
 
@@ -761,6 +861,8 @@ def compare_instruction_pair(
         return warnings
     if compiled.mnemonic == "push" and different_following_call(compiled_instrs, original_instrs, ci, oi):
         return warnings
+    if compare_targets_msvc_eh_state(compiled_instrs, original_instrs, compiled, original, context):
+        return warnings
 
     c_imms = dict(immediate_operands(compiled))
     o_imms = dict(immediate_operands(original))
@@ -807,6 +909,10 @@ def compare_instruction_pair(
             continue
         if compiled.mnemonic == "cmp" and equivalent_boolean_zero_test(
             c_op.imm, o_op.imm, compiled_instrs, original_instrs, ci, oi
+        ):
+            continue
+        if same_effective_register_immediate(
+            compiled_instrs, original_instrs, ci, oi, c_op.imm, o_op.imm, context.policy
         ):
             continue
         if (
