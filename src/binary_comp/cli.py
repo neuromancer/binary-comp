@@ -20,6 +20,13 @@ from binary_comp.analyzers.function_compare import (
     FunctionCompareError,
     FunctionComparer,
     format_comparison as format_function_comparison,
+    maybe_build,
+)
+from binary_comp.analyzers.seh import (
+    compare_function_seh,
+    format_seh_comparison,
+    format_seh_report,
+    generate_seh_report,
 )
 from binary_comp.analyzers.exe import ExeCompareOptions, compare_executable, format_executable_comparison
 from binary_comp.analyzers.global_access import (
@@ -129,6 +136,43 @@ def add_compare_parser(subparsers) -> None:
     parser.add_argument("disassembled_code", help="Path to the Ghidra disassembly export for the function")
     parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
     parser.set_defaults(handler=run_compare)
+
+
+def add_seh_parser(subparsers) -> None:
+    parser = subparsers.add_parser("seh", help="Compare C++ exception-handling (FuncInfo) structure and warn on differences")
+    parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
+    parser.add_argument("--target", default="full", help="Target name from config (default: full)")
+    parser.add_argument("function_name", nargs="?", help="Function name to compare (omit with --report)")
+    parser.add_argument("disassembled_code", nargs="?", help="Path to the Ghidra disassembly export for the function")
+    parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
+    parser.add_argument("--report", action="store_true", help="Scan every function and list EH-structure differences")
+    parser.add_argument("--filter", dest="file_filter", default=None, help="Restrict --report to matching files or function names")
+    parser.set_defaults(handler=run_seh)
+
+
+def run_seh(args) -> int:
+    try:
+        config, target = load_project_target(args.config, args.target)
+        comparer = FunctionComparer(
+            target,
+            canonical_aliases=extract_canonical_aliases(config),
+            signature_overloads=extract_signature_overloads(config),
+        )
+        maybe_build(target, not args.no_build)
+        if args.report:
+            rows = generate_seh_report(comparer, file_filter=args.file_filter)
+            print(format_seh_report(rows))
+            return 1 if rows else 0
+        if not args.function_name or not args.disassembled_code:
+            print("error: function_name and disassembled_code are required without --report", file=sys.stderr)
+            return 2
+        comparison = compare_function_seh(comparer, args.function_name, args.disassembled_code)
+    except (ConfigError, FileNotFoundError, RuntimeError, ValueError, FunctionCompareError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(format_seh_comparison(comparison))
+    return 1 if any(w.level == "warn" for w in comparison.warnings) else 0
 
 
 def add_exe_parser(subparsers) -> None:
@@ -549,6 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_calls_parser(subparsers)
     add_compare_parser(subparsers)
+    add_seh_parser(subparsers)
     add_data_parser(subparsers)
     add_exe_parser(subparsers)
     add_global_access_parser(subparsers)
