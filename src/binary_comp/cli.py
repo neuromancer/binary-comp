@@ -147,6 +147,7 @@ def add_seh_parser(subparsers) -> None:
     parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
     parser.add_argument("--report", action="store_true", help="Scan every function and list EH-structure differences")
     parser.add_argument("--filter", dest="file_filter", default=None, help="Restrict --report to matching files or function names")
+    parser.add_argument("--strict", action="store_true", help="Compare exact unwind states, toState links, and guards")
     parser.set_defaults(handler=run_seh)
 
 
@@ -160,13 +161,18 @@ def run_seh(args) -> int:
         )
         maybe_build(target, not args.no_build)
         if args.report:
-            rows = generate_seh_report(comparer, file_filter=args.file_filter)
-            print(format_seh_report(rows))
-            return 1 if rows else 0
+            report = generate_seh_report(comparer, file_filter=args.file_filter, strict=args.strict)
+            print(format_seh_report(report))
+            return 1 if report.rows else 0
         if not args.function_name or not args.disassembled_code:
             print("error: function_name and disassembled_code are required without --report", file=sys.stderr)
             return 2
-        comparison = compare_function_seh(comparer, args.function_name, args.disassembled_code)
+        comparison = compare_function_seh(
+            comparer,
+            args.function_name,
+            args.disassembled_code,
+            strict=args.strict,
+        )
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError, FunctionCompareError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

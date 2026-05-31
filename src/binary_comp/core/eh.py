@@ -53,8 +53,10 @@ class EHInfo:
     unwinds: tuple[UnwindState, ...]
     try_blocks: tuple[TryBlock, ...]
     # The unwind targets ("this+0x114", "arg@ebp+0x8", ...), in declaration order
-    # (reverse of destruction order). Used for cross-binary comparison.
+    # (reverse of destruction order). In default analysis this only includes
+    # states that can become live; strict analysis still uses ``unwinds``.
     targets: tuple[str, ...]
+    active_states: tuple[int, ...] | None = None
 
 
 def _md():
@@ -80,7 +82,9 @@ def find_funcinfo(image: PEImage, func_start: int, max_scan: int = 64) -> int | 
     """Return the FuncInfo address for ``func_start`` or ``None`` if it has no
     C++ EH frame.
     """
-    data = image.read(func_start, max_scan)
+    section_end = image.section_end_for_va(func_start)
+    scan_size = max_scan if section_end is None else min(max_scan, section_end - func_start)
+    data = image.read(func_start, scan_size)
     if not data:
         return None
     instrs = list(_md().disasm(data, func_start))
@@ -118,7 +122,9 @@ def find_this_slot(image: PEImage, func_start: int, max_scan: int = 64) -> str |
     Member-subobject unwind funclets reload ``this`` from this slot, so knowing
     it lets us tell ``this+0xNN`` apart from a member of some other local pointer.
     """
-    data = image.read(func_start, max_scan)
+    section_end = image.section_end_for_va(func_start)
+    scan_size = max_scan if section_end is None else min(max_scan, section_end - func_start)
+    data = image.read(func_start, scan_size)
     if not data:
         return None
     for instr in _md().disasm(data, func_start):
@@ -152,7 +158,7 @@ def decode_unwind_funclet(
         mnem, ops = instr.mnemonic, instr.op_str
         head, _, tail = ops.partition(",")
         head, tail = head.strip(), tail.strip()
-        if mnem == "test" and "ptr" in ops:
+        if mnem in ("test", "cmp") and "ptr" in ops:
             conditional = True
         elif mnem == "lea" and "[" in tail:
             base = ("lea", tail.split("[", 1)[1].rstrip("]"))
@@ -190,7 +196,9 @@ def _normalize_target(base, add_off: int, this_slot: str | None = None) -> str:
     kind, expr = base
     expr = expr.replace(" ", "")
     add = f"+0x{add_off:x}" if add_off else ""
-    if kind == "lea" and expr.startswith("ebp"):
+    if kind == "lea" and expr.startswith("ebp+"):
+        return f"arg@{expr}{add}"
+    if kind == "lea" and expr.startswith("ebp-"):
         return f"stack@{expr}{add}"
     if kind == "mov" and expr.startswith("ebp+"):
         return f"arg@{expr}{add}"
@@ -244,6 +252,142 @@ def parse_funcinfo(
     return max_state, tuple(unwinds), tuple(try_blocks)
 
 
+_LOW_REGS = {
+    "al": "eax",
+    "bl": "ebx",
+    "cl": "ecx",
+    "dl": "edx",
+}
+
+_FULL_REGS = frozenset({"eax", "ebx", "ecx", "edx", "esi", "edi", "ebp"})
+
+
+def _parse_imm(text: str) -> int | None:
+    text = text.strip().lower()
+    if text.startswith("0x"):
+        try:
+            return int(text, 16)
+        except ValueError:
+            return None
+    try:
+        return int(text, 10)
+    except ValueError:
+        return None
+
+
+def _state_slot_operand(text: str) -> bool:
+    compact = text.replace(" ", "").lower()
+    return compact.endswith("[ebp-4]") and (
+        compact.startswith("byteptr")
+        or compact.startswith("wordptr")
+        or compact.startswith("dwordptr")
+    )
+
+
+def _reg_value(reg_values: dict[str, int], operand: str) -> int | None:
+    operand = operand.strip().lower()
+    if operand in reg_values:
+        return reg_values[operand]
+    full = _LOW_REGS.get(operand)
+    if full is not None and full in reg_values:
+        return reg_values[full] & 0xFF
+    return None
+
+
+def _reachable_unwind_states(
+    unwinds: tuple[UnwindState, ...], assigned_states: set[int]
+) -> tuple[int, ...]:
+    reachable: set[int] = set()
+    pending = [state for state in assigned_states if 0 <= state < len(unwinds)]
+    while pending:
+        index = pending.pop()
+        if index in reachable:
+            continue
+        reachable.add(index)
+        to_state = unwinds[index].to_state
+        if 0 <= to_state < len(unwinds):
+            pending.append(to_state)
+    return tuple(sorted(reachable))
+
+
+def find_active_unwind_states(
+    image: PEImage,
+    func_start: int,
+    unwinds: tuple[UnwindState, ...],
+    max_scan: int = 4096,
+) -> tuple[int, ...] | None:
+    """Return unwind states that can be reached through ``[ebp-4]``.
+
+    MSVC often leaves constructor-cleanup funclets in FuncInfo even when the
+    function body never assigns that state number. Those states are useful in
+    strict metadata comparisons but should not drive the default semantic audit.
+    ``None`` means the state variable could not be recognized, so callers should
+    conservatively treat every parsed state as active.
+    """
+    first_funclet = min(
+        (state.action for state in unwinds if state.action is not None and state.action > func_start),
+        default=None,
+    )
+    scan_limit = max_scan
+    if first_funclet is not None:
+        scan_limit = min(scan_limit, first_funclet - func_start)
+    section_end = image.section_end_for_va(func_start)
+    scan_size = scan_limit if section_end is None else min(scan_limit, section_end - func_start)
+    data = image.read(func_start, scan_size)
+    if not data:
+        return None
+
+    reg_values: dict[str, int] = {}
+    assigned_states: set[int] = set()
+    saw_state_write = False
+
+    for instr in _md().disasm(data, func_start):
+        mnem = instr.mnemonic.lower()
+        head, sep, tail = instr.op_str.partition(",")
+        head = head.strip().lower()
+        tail = tail.strip().lower()
+
+        if sep and mnem == "mov" and _state_slot_operand(head):
+            saw_state_write = True
+            value = _parse_imm(tail)
+            if value is None:
+                value = _reg_value(reg_values, tail)
+            if value is not None and value >= 0:
+                assigned_states.add(value)
+            continue
+
+        if sep and mnem == "and" and _state_slot_operand(head):
+            saw_state_write = True
+            value = _parse_imm(tail)
+            if value is not None and (value & 0xFF) == 0:
+                assigned_states.add(0)
+            continue
+
+        if mnem in ("xor", "sub") and sep and head == tail and head in _FULL_REGS:
+            reg_values[head] = 0
+            continue
+
+        if mnem == "mov" and sep and head in _FULL_REGS:
+            value = _parse_imm(tail)
+            if value is None:
+                reg_values.pop(head, None)
+            else:
+                reg_values[head] = value
+            continue
+
+        if mnem == "call":
+            for reg in ("eax", "ecx", "edx"):
+                reg_values.pop(reg, None)
+            continue
+
+        if head in _FULL_REGS:
+            reg_values.pop(head, None)
+
+    if not saw_state_write:
+        return None
+    return _reachable_unwind_states(unwinds, assigned_states)
+
+
 def analyze_function_eh(image: PEImage, func_start: int) -> EHInfo:
     funcinfo_addr = find_funcinfo(image, func_start)
     if funcinfo_addr is None:
@@ -254,6 +398,7 @@ def analyze_function_eh(image: PEImage, func_start: int) -> EHInfo:
         return EHInfo(True, funcinfo_addr, _u32(image, funcinfo_addr), 0, (), (), ())
     max_state, unwinds, try_blocks = parsed
     magic = _u32(image, funcinfo_addr)
+    active_states = find_active_unwind_states(image, func_start, unwinds)
     # Declaration order = reverse of unwind (highest state destroyed first).
     targets = tuple(u.target for u in unwinds if u.action is not None)
-    return EHInfo(True, funcinfo_addr, magic, max_state, unwinds, try_blocks, targets)
+    return EHInfo(True, funcinfo_addr, magic, max_state, unwinds, try_blocks, targets, active_states)

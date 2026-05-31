@@ -5,6 +5,7 @@ import struct
 import pytest
 
 from binary_comp.analyzers.seh import (
+    SehReport,
     SehWarning,
     diff_eh,
     format_seh_comparison,
@@ -14,8 +15,10 @@ from binary_comp.analyzers.seh import (
 )
 from binary_comp.core.eh import (
     EHInfo,
+    UnwindState,
     analyze_function_eh,
     decode_unwind_funclet,
+    find_active_unwind_states,
     find_funcinfo,
     find_this_slot,
     parse_funcinfo,
@@ -29,15 +32,31 @@ from conftest import TEXT_VA, write_tiny_pe
 # diff_eh — the warning logic (no binary needed)
 # --------------------------------------------------------------------------- #
 
-def _eh(has_frame=True, targets=(), try_blocks=(), max_state=None):
+def _state(index, target, to_state=-1, conditional=False):
+    return UnwindState(
+        index=index,
+        to_state=to_state,
+        action=0x401000 + index,
+        dtor=0x402000 + index,
+        target=target,
+        conditional=conditional,
+    )
+
+
+def _eh(has_frame=True, targets=(), try_blocks=(), max_state=None, unwinds=None, active_states=None):
+    if unwinds is None:
+        unwinds = tuple(_state(index, target) for index, target in enumerate(targets))
+    else:
+        targets = tuple(state.target for state in unwinds if state.action is not None)
     return EHInfo(
         has_frame=has_frame,
         funcinfo_addr=0x460000 if has_frame else None,
         magic=0x19930520 if has_frame else None,
         max_state=len(targets) if max_state is None else max_state,
-        unwinds=(),
+        unwinds=tuple(unwinds),
         try_blocks=tuple(try_blocks),
         targets=tuple(targets),
+        active_states=active_states,
     )
 
 
@@ -88,6 +107,20 @@ def test_diff_missing_member_object_warns():
     assert any("MISSING a member destructor at this+0x114" in m for m in _messages(warnings))
 
 
+def test_diff_bare_this_mismatch_is_ignored_in_default_mode():
+    warnings = diff_eh(_eh(targets=("this",)), _eh(targets=()))
+    assert not any(w.level == "warn" for w in warnings)
+    assert any("strict state" in m or "strict unwind" in m for m in _messages(diff_eh(_eh(targets=("this",)), _eh(targets=()), strict=True)))
+
+
+def test_diff_member_count_mismatch_warns_even_when_offset_exists_on_both_sides():
+    warnings = diff_eh(
+        _eh(targets=("this+0xb4", "this+0xb4")),
+        _eh(targets=("this+0xb4",)),
+    )
+    assert any("MISSING a member destructor at this+0xb4" in m for m in _messages(warnings))
+
+
 def test_diff_pointer_object_count_mismatch_warns():
     original = ("ptr@ebp-0x14", "ptr@ebp-0x10")
     rebuilt = ("ptr@ebp-0x14",)
@@ -111,6 +144,14 @@ def test_diff_try_block_count_mismatch_warns():
     assert any("try-block count differs" in m for m in _messages(warnings))
 
 
+def test_diff_guarded_cleanup_count_mismatch_warns_with_matching_targets():
+    warnings = diff_eh(
+        _eh(unwinds=(_state(0, "ptr@ebp-0x20", conditional=True),)),
+        _eh(unwinds=(_state(0, "ptr@ebp-0x24", conditional=False),)),
+    )
+    assert any("guarded cleanup count differs for 'ptr'" in m for m in _messages(warnings))
+
+
 def test_diff_state_count_difference_with_matching_objects_is_info_only():
     members = ("this+0xb4",)
     warnings = diff_eh(
@@ -119,6 +160,41 @@ def test_diff_state_count_difference_with_matching_objects_is_info_only():
     )
     assert _levels(warnings) == ["info"]
     assert "unwind state count differs" in warnings[0].message
+
+
+def test_diff_ignores_inactive_constructor_cleanup_in_default_mode():
+    original = _eh(
+        unwinds=(
+            _state(0, "ptr@ebp-0x10", to_state=-1),
+            _state(1, "ptr@ebp-0x10", to_state=0),
+        ),
+        max_state=2,
+        active_states=(0,),
+    )
+    rebuilt = _eh(
+        unwinds=(_state(0, "ptr@ebp-0x10", to_state=-1),),
+        max_state=1,
+        active_states=(0,),
+    )
+    warnings = diff_eh(original, rebuilt)
+    assert not any(w.level == "warn" for w in warnings)
+    assert any("strict unwind state count differs" in m for m in _messages(diff_eh(original, rebuilt, strict=True)))
+
+
+def test_diff_strict_catches_same_kind_different_exact_stack_slot():
+    original = _eh(unwinds=(_state(0, "stack@ebp-0x20"),))
+    rebuilt = _eh(unwinds=(_state(0, "stack@ebp-0x24"),))
+    assert diff_eh(original, rebuilt) == []
+    warnings = diff_eh(original, rebuilt, strict=True)
+    assert any("strict state 0 differs" in m for m in _messages(warnings))
+
+
+def test_diff_strict_catches_to_state_difference():
+    original = _eh(unwinds=(_state(0, "this+0xb4", to_state=-1),))
+    rebuilt = _eh(unwinds=(_state(0, "this+0xb4", to_state=1),))
+    assert diff_eh(original, rebuilt) == []
+    warnings = diff_eh(original, rebuilt, strict=True)
+    assert any("strict state 0 differs" in m for m in _messages(warnings))
 
 
 # --------------------------------------------------------------------------- #
@@ -215,6 +291,21 @@ def test_decode_operator_delete_funclet(eh_image):
     assert dtor == 0x4011B0
 
 
+def test_normalize_lea_argument_funclet(tmp_path):
+    pytest.importorskip("capstone")
+    blob = bytearray(b"\x90" * 0x80)
+    blob[0x40:0x4A] = bytes([
+        0x8D, 0x4D, 0x08,                       # lea ecx,[ebp+0x8]
+        0xE9, 0x58, 0x01, 0x00, 0x00,           # jmp 0x4011A0
+        0x90, 0x90,
+    ])
+    exe = tmp_path / "lea_arg.exe"
+    write_tiny_pe(exe, bytes(blob))
+    dtor, target, _ = decode_unwind_funclet(PEImage(str(exe)), TEXT_VA + 0x40)
+    assert target == "arg@ebp+8"
+    assert dtor == 0x4011A0
+
+
 def test_analyze_function_eh_end_to_end(eh_image):
     info = analyze_function_eh(eh_image, TEXT_VA)
     assert info.has_frame is True
@@ -222,6 +313,22 @@ def test_analyze_function_eh_end_to_end(eh_image):
     assert info.magic == 0x19930520
     assert info.max_state == 2
     assert info.targets == ("this+0x114", "ptr@ebp-0x14")
+
+
+def test_find_active_unwind_states_follows_to_state_chain(eh_image, tmp_path):
+    max_state, unwinds, _ = parse_funcinfo(eh_image, 0x401050, this_slot="ebp-0x10")
+    assert max_state == 2
+    blob = bytearray(_build_eh_blob())
+    # Replace the function ret with:
+    #   mov eax, 1
+    #   mov byte ptr [ebp-4], al
+    #   ret
+    off = (TEXT_VA + 0x1E) - TEXT_VA
+    blob[off:off + 9] = bytes([0xB8, 0x01, 0, 0, 0, 0x88, 0x45, 0xFC, 0xC3])
+    exe = tmp_path / "active_state.exe"
+    write_tiny_pe(exe, bytes(blob))
+    active = find_active_unwind_states(PEImage(str(exe)), TEXT_VA, unwinds)
+    assert active == (0, 1)
 
 
 def test_analyze_function_eh_no_frame(tmp_path):
@@ -264,3 +371,23 @@ def test_format_seh_report_groups_by_file():
     assert "A::f  (0x401000)" in text
     assert "2 function(s) with EH-structure differences." in text
     assert format_seh_report([]) == "No exception-handling differences found."
+
+
+def test_format_seh_report_summary_for_report_object():
+    report = SehReport(
+        rows=(
+            SehReportRow("A.cpp", "A::f", 0x401000, (SehWarning("warn", "missing dtor"),)),
+        ),
+        scanned=3,
+        mapped=2,
+        missing=1,
+        original_frames=2,
+        rebuilt_frames=1,
+        both_frames=1,
+        original_only=1,
+        rebuilt_only=0,
+        strict=True,
+    )
+    text = format_seh_report(report)
+    assert "--- strict SEH structure differences ---" in text
+    assert "Scanned 3 function(s), mapped 2, missing 1" in text
