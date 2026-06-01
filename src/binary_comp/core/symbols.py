@@ -5,6 +5,21 @@ from __future__ import annotations
 import re
 
 
+_PRIMITIVE_TYPES = {
+    "X": "void",
+    "D": "char",
+    "E": "unsigned char",
+    "F": "short",
+    "G": "unsigned short",
+    "H": "int",
+    "I": "unsigned int",
+    "J": "long",
+    "K": "unsigned long",
+    "M": "float",
+    "N": "double",
+}
+
+
 def split_name_parameters(name: str) -> str:
     return name.split("(", 1)[0]
 
@@ -23,6 +38,72 @@ def decode_msvc_pointer_class_tokens(encoded: str) -> list[str]:
             continue
         tokens.append(token.replace("@", "::"))
     return tokens
+
+
+def _decode_msvc_named_type(encoded: str, pos: int, previous_class_tokens: list[str]) -> tuple[str | None, int]:
+    if pos >= len(encoded) or encoded[pos] not in "UV":
+        return None, pos
+
+    end = encoded.find("@@", pos + 1)
+    if end < 0:
+        return None, pos
+
+    token = encoded[pos + 1:end]
+    if token.isdigit() and previous_class_tokens:
+        type_name = previous_class_tokens[-1]
+    else:
+        type_name = token.replace("@", "::")
+    previous_class_tokens.append(type_name)
+    return type_name, end + 2
+
+
+def _decode_msvc_type(encoded: str, pos: int, previous_class_tokens: list[str]) -> tuple[str | None, int]:
+    if pos >= len(encoded):
+        return None, pos
+
+    start = pos
+    code = encoded[pos]
+    primitive = _PRIMITIVE_TYPES.get(code)
+    if primitive is not None:
+        return primitive, pos + 1
+
+    named, next_pos = _decode_msvc_named_type(encoded, pos, previous_class_tokens)
+    if named is not None:
+        return named, next_pos
+
+    if code == "P":
+        pos += 1
+        while pos < len(encoded) and encoded[pos] in "ABCDQ":
+            pos += 1
+        pointee, next_pos = _decode_msvc_type(encoded, pos, previous_class_tokens)
+        if pointee is None:
+            return None, start
+        return f"{pointee}*", next_pos
+
+    return None, start
+
+
+def _decode_msvc_parameters(encoded: str) -> list[str]:
+    # Member functions start with access/cv/calling-convention flags, then the
+    # return type, then the parameter type stream.
+    pos = 3
+    previous_class_tokens: list[str] = []
+    _, pos = _decode_msvc_type(encoded, pos, previous_class_tokens)
+
+    parameters: list[str] = []
+    while pos < len(encoded):
+        if encoded.startswith("@Z", pos) or encoded[pos] == "Z":
+            break
+        if encoded[pos] == "@":
+            pos += 1
+            continue
+        type_name, next_pos = _decode_msvc_type(encoded, pos, previous_class_tokens)
+        if type_name is None or next_pos <= pos:
+            break
+        if type_name != "void":
+            parameters.append(type_name)
+        pos = next_pos
+    return parameters
 
 
 def normalize_compiled(name: str, signature_names: frozenset[str] = frozenset()) -> str:
@@ -51,9 +132,8 @@ def normalize_compiled(name: str, signature_names: frozenset[str] = frozenset())
         if match:
             normalized = f"{match.group(2)}::{match.group(1)}"
             if normalized in signature_names:
-                class_tokens = decode_msvc_pointer_class_tokens(name[match.end():])
-                if len(class_tokens) > 1:
-                    return f"{normalized}({','.join(f'{item}*' for item in class_tokens[1:])})"
+                parameters = _decode_msvc_parameters(name[match.end():])
+                return f"{normalized}({','.join(parameters)})"
             return normalized
         match = re.match(r"\?(\w+)@@", name)
         if match:

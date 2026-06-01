@@ -75,6 +75,22 @@ def test_msvc_member_name_can_use_configured_signature():
     assert normalize_compiled(symbol, frozenset({"Box::Take"})) == "Box::Take(Item*)"
 
 
+def test_msvc_member_name_can_decode_primitive_signature():
+    symbol = "?SetScale@CDrawablePart@@QAEXMM@Z"
+
+    assert normalize_compiled(symbol, frozenset({"CDrawablePart::SetScale"})) == (
+        "CDrawablePart::SetScale(float,float)"
+    )
+
+
+def test_msvc_member_name_can_decode_value_type_signature():
+    symbol = "?SetScale@CDrawablePart@@UAEXUxRect@@@Z"
+
+    assert normalize_compiled(symbol, frozenset({"CDrawablePart::SetScale"})) == (
+        "CDrawablePart::SetScale(xRect)"
+    )
+
+
 def test_call_policy_auto_aliases_same_original_address(tmp_path):
     source_dir = tmp_path / "src"
     source_dir.mkdir()

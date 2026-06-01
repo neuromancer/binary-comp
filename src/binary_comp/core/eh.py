@@ -88,20 +88,24 @@ def find_funcinfo(image: PEImage, func_start: int, max_scan: int = 64) -> int | 
     if not data:
         return None
     instrs = list(_md().disasm(data, func_start))
-    # A C++ EH function's prologue ALWAYS starts by reading the SEH chain head
-    # (`mov reg, fs:[0]`). Requiring it keeps a small frame-less function from
-    # picking up the next function's frame when the fixed-size scan overruns it.
-    if not instrs or instrs[0].mnemonic != "mov" or "fs:[0]" not in instrs[0].op_str.replace(" ", ""):
-        return None
-
+    # A C++ EH function's prologue reads the SEH chain head and then installs
+    # a frame (`mov fs:[0], esp`). VC6 may emit the initial `push -1` /
+    # `push <handler>` before the chain read, so do not require the read to be
+    # the first instruction. Stop at control flow to avoid scanning into the
+    # next function when this one is frame-less.
+    saw_chain_read = False
     handler = None
-    for index, instr in enumerate(instrs[:8]):
+    for index, instr in enumerate(instrs[:12]):
         normalized = instr.op_str.replace(" ", "")
-        if instr.mnemonic == "mov" and "fs:[0]" in normalized and normalized.endswith("esp"):
+        if instr.mnemonic == "mov" and "fs:[0]" in normalized and not normalized.startswith(("fs:[0]", "dwordptrfs:[0]")):
+            saw_chain_read = True
+        if instr.mnemonic == "mov" and saw_chain_read and "fs:[0]" in normalized and normalized.endswith("esp"):
             for prev in range(index - 1, -1, -1):
                 if instrs[prev].mnemonic == "push" and instrs[prev].op_str.startswith("0x"):
                     handler = int(instrs[prev].op_str, 16)
                     break
+            break
+        if instr.mnemonic in ("call", "jmp", "ret"):
             break
     if handler is None:
         return None

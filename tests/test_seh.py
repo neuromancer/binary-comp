@@ -255,6 +255,30 @@ def test_find_funcinfo_and_this_slot(eh_image):
     assert find_this_slot(eh_image, TEXT_VA) == "ebp-0x10"
 
 
+def test_find_funcinfo_accepts_vc6_push_first_prologue(tmp_path):
+    pytest.importorskip("capstone")
+    blob = bytearray(b"\x90" * 0x80)
+
+    def put(va: int, data: bytes) -> None:
+        off = va - TEXT_VA
+        blob[off:off + len(data)] = data
+
+    put(TEXT_VA, bytes([
+        0x6A, 0xFF,                             # push -1
+        0x68, 0x40, 0x10, 0x40, 0x00,           # push 0x401040 (ehhandler)
+        0x64, 0xA1, 0, 0, 0, 0,                 # mov eax, fs:[0]
+        0x50,                                   # push eax
+        0x64, 0x89, 0x25, 0, 0, 0, 0,           # mov fs:[0], esp
+        0xC3,                                   # ret
+    ]))
+    put(0x401040, bytes([0xB8, 0x50, 0x10, 0x40, 0x00, 0xE9, 0, 0, 0, 0]))
+    put(0x401050, struct.pack("<IiIiI", 0x19930520, 0, 0, 0, 0))
+
+    exe = tmp_path / "push_first_eh.exe"
+    write_tiny_pe(exe, bytes(blob))
+    assert find_funcinfo(PEImage(str(exe)), TEXT_VA) == 0x401050
+
+
 def test_find_funcinfo_returns_none_without_eh_frame(tmp_path):
     pytest.importorskip("capstone")
     # default tiny PE function is `mov eax,7; cmp eax,7; ret` — no EH prologue
