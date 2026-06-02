@@ -1,7 +1,7 @@
-char g_Title_00405030[8] = "ALIEN!";
-int g_Bonus_00405038 = 7;
-int g_Threshold_0040503C = 10;
-int g_Rotor_00405040[3] = {3, 5, 8};
+char g_Title_00407030[8] = "ALIEN!";
+int g_Bonus_00407038 = 7;
+int g_Threshold_0040703C = 10;
+int g_Rotor_00407040[3] = {3, 5, 8};
 
 class ScoreTable {
 public:
@@ -39,11 +39,27 @@ private:
     int base_;
 };
 
+class CleanupProbe {
+public:
+    CleanupProbe(int* counter) : counter_(counter) {}
+    ~CleanupProbe();
+
+private:
+    int* counter_;
+};
+
+CleanupProbe::~CleanupProbe()
+{
+    if (counter_ != 0) {
+        *counter_ += 1;
+    }
+}
+
 int ScoreTable::score(int value) const
 {
     int total = value + seed_;
     if (total > 10) {
-        total += g_Bonus_00405038;
+        total += g_Bonus_00407038;
     }
     return total;
 }
@@ -62,7 +78,7 @@ int Door::canOpen(int passcode) const
     if (passcode == key_) {
         return 1;
     }
-    if (passcode == g_Bonus_00405038) {
+    if (passcode == g_Bonus_00407038) {
         return 1;
     }
     return 0;
@@ -71,8 +87,9 @@ int Door::canOpen(int passcode) const
 int LessonLog::severity(int channel) const
 {
     int severity = base_ + channel;
-    if (g_Title_00405030[0] == 'A') {
-        severity += g_Rotor_00405040[channel & 1];
+    CleanupProbe probe(&severity);
+    if (g_Title_00407030[0] == 'A') {
+        severity += g_Rotor_00407040[channel & 1];
     }
     return severity;
 }

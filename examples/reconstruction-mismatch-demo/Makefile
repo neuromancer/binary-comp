@@ -2,6 +2,7 @@ TOOLS_DIR ?= .tools
 WIBO_VERSION ?= 1.1.0
 MSVC420_URL ?= https://github.com/itsmattkc/MSVC420/archive/refs/heads/master.zip
 MSVCRT40_URL ?= https://raw.githubusercontent.com/neuromancer/my-teacher-is-an-alien-re/main/3rdparty/msvcrt40.dll
+BINARY_COMP ?= binary-comp
 
 DEFAULT_WIBO := $(TOOLS_DIR)/wibo/wibo
 DEFAULT_MSVC42_DIR := $(TOOLS_DIR)/MSVC420
@@ -71,10 +72,12 @@ build: setup
 	WIBO="$(abspath $(WIBO))" MSVC42_DIR="$(abspath $(MSVC42_DIR))" sh build.sh
 
 demo: build
-	PYTHONPATH=../../src python3 -m binary_comp.cli exe --config binary-comp.json --target demo --functions
-	PYTHONPATH=../../src python3 -m binary_comp.cli report --config binary-comp.json --target demo --no-build
-	PYTHONPATH=../../src python3 -m binary_comp.cli values --config binary-comp.json --target demo --no-build --include-stack-locals
-	PYTHONPATH=../../src python3 -m binary_comp.cli data --config binary-comp.json --target demo || true
+	$(BINARY_COMP) exe --config binary-comp.json --target demo --functions
+	$(BINARY_COMP) report --config binary-comp.json --target demo --no-build
+	$(BINARY_COMP) compare --config binary-comp.json --target demo --no-build Door::canOpen code/FUN_0040109E.disassembled.txt
+	$(BINARY_COMP) values --config binary-comp.json --target demo --no-build --include-stack-locals
+	$(BINARY_COMP) data --config binary-comp.json --target demo || true
+	$(BINARY_COMP) seh --config binary-comp.json --target demo --report --no-build || true
 
 clean:
 	rm -rf artifacts code

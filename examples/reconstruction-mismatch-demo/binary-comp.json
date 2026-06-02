@@ -8,7 +8,7 @@
       "globals_source": "src/rebuilt/rebuilt.cpp",
       "code_export_dir": "code",
       "asm_dir": "artifacts/rebuilt",
-      "library_ranges": [["0x00401105", "0xffffffff"]]
+      "library_ranges": [["0x00401185", "0xffffffff"]]
     }
   }
 }

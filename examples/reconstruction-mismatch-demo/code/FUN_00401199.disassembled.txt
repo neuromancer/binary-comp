@@ -1,5 +1,5 @@
-Function: FUN_00401119
-Address: 0x00401119
+Function: FUN_00401199
+Address: 0x00401199
 
 push ebp
 mov ebp, esp
@@ -9,37 +9,37 @@ push esi
 push edi
 push 4
 lea ecx, [ebp - 0x10]
-call 0x4011a0
+call 0x401250
 push 0xc
 lea ecx, [ebp - 4]
-call 0x4011d0
+call 0x401280
 push 0x4d2
 lea ecx, [ebp - 8]
-call 0x401200
+call 0x4012b0
 push 2
 lea ecx, [ebp - 0xc]
-call 0x401230
+call 0x4012e0
 push 7
 lea ecx, [ebp - 8]
-call 0x401075
+call 0x40109e
 mov ebx, eax
 push 3
 lea ecx, [ebp - 4]
-call 0x401038
+call 0x401061
+add ebx, eax
+push 5
+call 0x401185
+add esp, 4
 add ebx, eax
 push 1
 lea ecx, [ebp - 0xc]
-call 0x4010bf
-add ebx, eax
-push 5
-call 0x401105
-add esp, 4
+call 0x4010e8
 add ebx, eax
 push 9
 lea ecx, [ebp - 0x10]
-call 0x401000
+call 0x401029
 add eax, ebx
-jmp 0x40118e
+jmp 0x40120e
 pop edi
 pop esi
 pop ebx

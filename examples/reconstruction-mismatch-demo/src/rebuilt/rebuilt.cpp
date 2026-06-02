@@ -1,7 +1,7 @@
-char g_Title_00405030[8] = "ALIEN!";
-int g_Bonus_00405038 = 9;
-int g_Threshold_0040503C = 10;
-int g_Rotor_00405040[3] = {3, 5, 8};
+char g_Title_00407030[8] = "ALIEN!";
+int g_Bonus_00407038 = 9;
+int g_Threshold_0040703C = 10;
+int g_Rotor_00407040[3] = {3, 5, 8};
 
 class ScoreTable {
 public:
@@ -39,17 +39,17 @@ private:
     int base_;
 };
 
-/* Function start: 0x00401000 */
+/* Function start: 0x00401029 */
 int ScoreTable::score(int value) const
 {
     int total = value + seed_;
     if (total > 12) {
-        total += g_Bonus_00405038;
+        total += g_Bonus_00407038;
     }
     return total;
 }
 
-/* Function start: 0x00401038 */
+/* Function start: 0x00401061 */
 int Reactor::tick(int coolant)
 {
     heat_ += 3;
@@ -59,7 +59,7 @@ int Reactor::tick(int coolant)
     return heat_;
 }
 
-/* Function start: 0x00401075 */
+/* Function start: 0x0040109E */
 int Door::canOpen(int passcode) const
 {
     if (passcode == key_) {
@@ -68,17 +68,17 @@ int Door::canOpen(int passcode) const
     return 0;
 }
 
-/* Function start: 0x004010BF */
+/* Function start: 0x004010E8 */
 int LessonLog::severity(int channel) const
 {
     int severity = base_ + channel;
-    if (g_Title_00405030[0] == 'A') {
-        severity += g_Rotor_00405040[channel & 1];
+    if (g_Title_00407030[0] == 'A') {
+        severity += g_Rotor_00407040[channel & 1];
     }
     return severity;
 }
 
-/* Function start: 0x00401105 */
+/* Function start: 0x00401185 */
 int boundary_after_reconstructed(int value)
 {
     return value + 1;

@@ -29,16 +29,16 @@ _TEXT	ENDS
 FLAT	GROUP _DATA, CONST, _BSS
 	ASSUME	CS: FLAT, DS: FLAT, SS: FLAT
 endif
-PUBLIC	?g_Title_00405030@@3PADA			; g_Title_00405030
-PUBLIC	?g_Bonus_00405038@@3HA				; g_Bonus_00405038
-PUBLIC	?g_Threshold_0040503C@@3HA			; g_Threshold_0040503C
-PUBLIC	?g_Rotor_00405040@@3PAHA			; g_Rotor_00405040
+PUBLIC	?g_Title_00407030@@3PADA			; g_Title_00407030
+PUBLIC	?g_Bonus_00407038@@3HA				; g_Bonus_00407038
+PUBLIC	?g_Threshold_0040703C@@3HA			; g_Threshold_0040703C
+PUBLIC	?g_Rotor_00407040@@3PAHA			; g_Rotor_00407040
 _DATA	SEGMENT
-?g_Title_00405030@@3PADA DB 'ALIEN!', 00H		; g_Title_00405030
+?g_Title_00407030@@3PADA DB 'ALIEN!', 00H		; g_Title_00407030
 	ORG $+1
-?g_Bonus_00405038@@3HA DD 09H				; g_Bonus_00405038
-?g_Threshold_0040503C@@3HA DD 0aH			; g_Threshold_0040503C
-?g_Rotor_00405040@@3PAHA DD 03H				; g_Rotor_00405040
+?g_Bonus_00407038@@3HA DD 09H				; g_Bonus_00407038
+?g_Threshold_0040703C@@3HA DD 0aH			; g_Threshold_0040703C
+?g_Rotor_00407040@@3PAHA DD 03H				; g_Rotor_00407040
 	DD	05H
 	DD	08H
 _DATA	ENDS
@@ -66,7 +66,7 @@ _total$ = -4
 	cmp	DWORD PTR _total$[ebp], 12		; 0000000cH
 	jle	$L210
 ; Line 47
-	mov	eax, DWORD PTR ?g_Bonus_00405038@@3HA	; g_Bonus_00405038
+	mov	eax, DWORD PTR ?g_Bonus_00407038@@3HA	; g_Bonus_00407038
 	add	DWORD PTR _total$[ebp], eax
 ; Line 49
 $L210:
@@ -176,13 +176,13 @@ _severity$ = -4
 	add	eax, DWORD PTR _channel$[ebp]
 	mov	DWORD PTR _severity$[ebp], eax
 ; Line 75
-	movsx	eax, BYTE PTR ?g_Title_00405030@@3PADA	; g_Title_00405030
+	movsx	eax, BYTE PTR ?g_Title_00407030@@3PADA	; g_Title_00407030
 	cmp	eax, 65					; 00000041H
 	jne	$L223
 ; Line 76
 	mov	eax, DWORD PTR _channel$[ebp]
 	and	eax, 1
-	mov	eax, DWORD PTR ?g_Rotor_00405040@@3PAHA[eax*4]
+	mov	eax, DWORD PTR ?g_Rotor_00407040@@3PAHA[eax*4]
 	add	DWORD PTR _severity$[ebp], eax
 ; Line 78
 $L223:

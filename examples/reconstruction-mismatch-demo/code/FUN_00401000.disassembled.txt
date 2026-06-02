@@ -3,23 +3,20 @@ Address: 0x00401000
 
 push ebp
 mov ebp, esp
-sub esp, 8
+sub esp, 4
 push ebx
 push esi
 push edi
-mov dword ptr [ebp - 8], ecx
-mov eax, dword ptr [ebp - 8]
-mov eax, dword ptr [eax]
-add eax, dword ptr [ebp + 8]
-mov dword ptr [ebp - 4], eax
-cmp dword ptr [ebp - 4], 0xa
-jle 0x401029
-mov eax, dword ptr [0x405038]
-add dword ptr [ebp - 4], eax
+mov dword ptr [ebp - 4], ecx
 mov eax, dword ptr [ebp - 4]
-jmp 0x401031
+cmp dword ptr [eax], 0
+je 0x40101f
+mov eax, dword ptr [ebp - 4]
+mov eax, dword ptr [eax]
+inc dword ptr [eax]
+jmp 0x401024
 pop edi
 pop esi
 pop ebx
 leave
-ret 4
+ret

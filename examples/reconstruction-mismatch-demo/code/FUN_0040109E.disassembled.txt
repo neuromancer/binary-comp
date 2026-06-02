@@ -1,5 +1,5 @@
-Function: FUN_00401075
-Address: 0x00401075
+Function: FUN_0040109E
+Address: 0x0040109E
 
 push ebp
 mov ebp, esp
@@ -11,16 +11,16 @@ mov dword ptr [ebp - 4], ecx
 mov eax, dword ptr [ebp - 4]
 mov ecx, dword ptr [ebp + 8]
 cmp dword ptr [eax], ecx
-jne 0x401099
+jne 0x4010c2
 mov eax, 1
-jmp 0x4010b8
-mov eax, dword ptr [0x405038]
+jmp 0x4010e1
+mov eax, dword ptr [0x407038]
 cmp dword ptr [ebp + 8], eax
-jne 0x4010b1
+jne 0x4010da
 mov eax, 1
-jmp 0x4010b8
+jmp 0x4010e1
 xor eax, eax
-jmp 0x4010b8
+jmp 0x4010e1
 pop edi
 pop esi
 pop ebx

@@ -1,5 +1,5 @@
-Function: FUN_00401230
-Address: 0x00401230
+Function: FUN_004012E0
+Address: 0x004012E0
 
 push ebp
 mov ebp, esp
@@ -11,7 +11,7 @@ mov dword ptr [ebp - 4], ecx
 mov eax, dword ptr [ebp + 8]
 mov ecx, dword ptr [ebp - 4]
 mov dword ptr [ecx], eax
-jmp 0x401249
+jmp 0x4012f9
 mov eax, dword ptr [ebp - 4]
 pop edi
 pop esi

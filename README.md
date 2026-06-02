@@ -16,13 +16,8 @@ engineering projects:
 
 ## Install
 
-For local development from a checkout:
-
-```bash
-PYTHONPATH=src python3 -m binary_comp.cli values --help
-```
-
-Or install it editable with all optional analyzer dependencies:
+For local development from a checkout, install it editable with all optional
+analyzer dependencies:
 
 ```bash
 python3 -m pip install -e ".[all]"
@@ -153,17 +148,49 @@ From the example directory:
 ```bash
 make setup
 make build
-PYTHONPATH=../../src python3 -m binary_comp.cli exe --config binary-comp.json --target demo --functions
-PYTHONPATH=../../src python3 -m binary_comp.cli report --config binary-comp.json --target demo --no-build
-PYTHONPATH=../../src python3 -m binary_comp.cli compare --config binary-comp.json --target demo --no-build Door::canOpen code/FUN_00401075.disassembled.txt
-PYTHONPATH=../../src python3 -m binary_comp.cli values --config binary-comp.json --target demo --no-build --include-stack-locals
-PYTHONPATH=../../src python3 -m binary_comp.cli data --config binary-comp.json --target demo
+binary-comp exe --config binary-comp.json --target demo --functions
+binary-comp report --config binary-comp.json --target demo --no-build
+binary-comp compare --config binary-comp.json --target demo --no-build Door::canOpen code/FUN_0040109E.disassembled.txt
+binary-comp values --config binary-comp.json --target demo --no-build --include-stack-locals
+binary-comp data --config binary-comp.json --target demo
+binary-comp seh --config binary-comp.json --target demo --report --no-build
 ```
 
-The example intentionally includes discrepancies across four small classes:
-function similarity differences, an immediate-value mismatch, a global data
-mismatch, and shifted function addresses. `binary-comp data` exits nonzero in
-this example because it finds the expected global mismatch.
+The example intentionally includes discrepancies across four small reconstructed
+classes plus an original-only cleanup helper: function similarity differences,
+a focused single-function diff, an immediate-value mismatch, a global data
+mismatch, shifted function addresses, and an original-only C++ EH frame.
+`binary-comp data` and `binary-comp seh --report` exit nonzero in this example
+because they find the expected mismatches.
+
+Small excerpts from the generated reports:
+
+```text
+--- Similarity Report ---
+
+=== rebuilt.cpp ===
+  Door::canOpen                                 0x40109E  80.00%
+  LessonLog::severity                           0x4010E8  54.35%
+```
+
+```text
+Comparison for function 'Door::canOpen':
+0040109A: xor eax, eax                 | 004010C2: mov eax, dword ptr [0x4070..
+0040109C: jmp 0x4010a1                 | 004010C7: cmp dword ptr [ebp + 8], eax
+
+Similarity: 80.00%
+```
+
+```text
+0x00407038   0x00405038     g_Bonus_00407038             MISMATCH   init: 9
+             Original value: 0x00000007 (7)
+             Rebuilt value:  0x00000009 (9)
+```
+
+```text
+LessonLog::severity  (0x4010E8)
+    WARNING: rebuilt has NO C++ EH frame, original unwinds 1 state(s) ['stack@ebp-0x10']
+```
 
 ## Development
 

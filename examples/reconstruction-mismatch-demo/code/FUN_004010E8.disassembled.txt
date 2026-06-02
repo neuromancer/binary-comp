@@ -1,0 +1,49 @@
+Function: FUN_004010E8
+Address: 0x004010E8
+
+push ebp
+mov ebp, esp
+push -1
+push 0x40116a
+mov eax, dword ptr fs:[0]
+push eax
+mov dword ptr fs:[0], esp
+sub esp, 0x10
+push ebx
+push esi
+push edi
+mov dword ptr [ebp - 0x1c], ecx
+mov eax, dword ptr [ebp - 0x1c]
+mov eax, dword ptr [eax]
+add eax, dword ptr [ebp + 8]
+mov dword ptr [ebp - 0x14], eax
+lea eax, [ebp - 0x14]
+push eax
+lea ecx, [ebp - 0x10]
+call 0x401220
+mov dword ptr [ebp - 4], 0
+movsx eax, byte ptr [0x407030]
+cmp eax, 0x41
+jne 0x401147
+mov eax, dword ptr [ebp + 8]
+and eax, 1
+mov eax, dword ptr [eax*4 + 0x407040]
+add dword ptr [ebp - 0x14], eax
+mov eax, dword ptr [ebp - 0x14]
+mov dword ptr [ebp - 0x18], eax
+mov dword ptr [ebp - 4], 0xffffffff
+call 0x401161
+mov eax, dword ptr [ebp - 0x18]
+jmp 0x401174
+lea ecx, [ebp - 0x10]
+call 0x401000
+ret
+mov eax, 0x4063b8
+jmp 0x4014d0
+mov ecx, dword ptr [ebp - 0xc]
+mov dword ptr fs:[0], ecx
+pop edi
+pop esi
+pop ebx
+leave
+ret 4
