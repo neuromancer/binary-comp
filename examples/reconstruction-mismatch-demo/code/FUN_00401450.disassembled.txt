@@ -1,0 +1,7 @@
+Function: FUN_00401450
+Address: 0x00401450
+
+POP eax
+POP ecx
+XCHG dword ptr [esp], eax
+JMP eax

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from binary_comp.analyzers.calls import CallsOptions, check_calls, format_calls_summary
@@ -29,6 +30,7 @@ from binary_comp.analyzers.seh import (
     generate_seh_report,
 )
 from binary_comp.analyzers.exe import ExeCompareOptions, compare_executable, format_executable_comparison
+from binary_comp.analyzers.export_asm import ExportAsmOptions, export_asm, format_export_asm_summary
 from binary_comp.analyzers.global_access import (
     GlobalAccessOptions,
     check_global_accesses,
@@ -133,9 +135,32 @@ def add_compare_parser(subparsers) -> None:
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
     parser.add_argument("--target", default="full", help="Target name from config (default: full)")
     parser.add_argument("function_name", help="Function name to compare")
-    parser.add_argument("disassembled_code", help="Path to the Ghidra disassembly export for the function")
+    parser.add_argument("disassembled_code", help="Path to the Ghidra-style disassembly export for the function")
     parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
     parser.set_defaults(handler=run_compare)
+
+
+def add_export_asm_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "export-asm",
+        help="Generate Ghidra-style disassembly exports from the original PE with Capstone",
+    )
+    parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
+    parser.add_argument("--target", default="full", help="Target name from config (default: full)")
+    parser.add_argument("--out-dir", help="Output directory override (default: target code_export_dir)")
+    parser.add_argument("--clean", action="store_true", help="Remove existing FUN_*.disassembled.txt files before exporting")
+    parser.add_argument("--map", dest="original_map", help="Optional original MSVC linker map for denser boundaries")
+    parser.add_argument("--object", action="append", dest="objects", default=[],
+                        help="Object file to export from --map; can be repeated. Defaults to all map functions.")
+    parser.add_argument("--no-source", action="store_true", help="Do not export source Function start annotations")
+    discover_group = parser.add_mutually_exclusive_group()
+    discover_group.add_argument("--discover", dest="discover", action="store_true", default=None,
+                                help="Also discover function starts from PE entry, calls, jumps, and prologues")
+    discover_group.add_argument("--no-discover", dest="discover", action="store_false",
+                                help="Disable automatic discovery when no source/map targets are found")
+    parser.add_argument("--max-bytes", type=lambda value: int(value, 0), help="Maximum bytes to decode per function")
+    parser.add_argument("--max-functions", type=int, default=4096, help="Maximum discovered/exported functions")
+    parser.set_defaults(handler=run_export_asm)
 
 
 def add_seh_parser(subparsers) -> None:
@@ -143,7 +168,7 @@ def add_seh_parser(subparsers) -> None:
     parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help=f"Project config path (default: {DEFAULT_CONFIG_PATH})")
     parser.add_argument("--target", default="full", help="Target name from config (default: full)")
     parser.add_argument("function_name", nargs="?", help="Function name to compare (omit with --report)")
-    parser.add_argument("disassembled_code", nargs="?", help="Path to the Ghidra disassembly export for the function")
+    parser.add_argument("disassembled_code", nargs="?", help="Path to the Ghidra-style disassembly export for the function")
     parser.add_argument("--no-build", action="store_true", help="Use existing rebuilt binary and map")
     parser.add_argument("--report", action="store_true", help="Scan every function and list EH-structure differences")
     parser.add_argument("--filter", dest="file_filter", default=None, help="Restrict --report to matching files or function names")
@@ -512,6 +537,39 @@ def run_compare(args) -> int:
     return 0
 
 
+def resolve_cli_path(config_path: str, path: str | None) -> str | None:
+    if not path:
+        return None
+    if os.path.isabs(path):
+        return path
+    return os.path.join(os.path.dirname(os.path.abspath(config_path)), path)
+
+
+def run_export_asm(args) -> int:
+    try:
+        config, target = load_project_target(args.config, args.target)
+        summary = export_asm(
+            target,
+            ExportAsmOptions(
+                out_dir=resolve_cli_path(args.config, args.out_dir),
+                clean=args.clean,
+                original_map=resolve_cli_path(args.config, args.original_map),
+                objects=tuple(args.objects or ()),
+                include_source=not args.no_source,
+                discover=args.discover,
+                max_bytes=args.max_bytes,
+                max_functions=args.max_functions,
+                signature_overloads=extract_signature_overloads(config),
+            ),
+        )
+    except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(format_export_asm_summary(summary))
+    return 0
+
+
 def run_exe(args) -> int:
     try:
         _, target = load_project_target(args.config, args.target)
@@ -599,6 +657,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_calls_parser(subparsers)
     add_compare_parser(subparsers)
+    add_export_asm_parser(subparsers)
     add_seh_parser(subparsers)
     add_data_parser(subparsers)
     add_exe_parser(subparsers)

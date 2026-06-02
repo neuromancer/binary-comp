@@ -1,0 +1,13 @@
+Function: FUN_004013AE
+Address: 0x004013AE
+
+XOR eax, eax
+MOV ecx, dword ptr fs:[0]
+CMP dword ptr [ecx + 4], 0x401324
+JNE 0x4013d0
+MOV edx, dword ptr [ecx + 0xc]
+MOV edx, dword ptr [edx + 0xc]
+CMP dword ptr [ecx + 8], edx
+JNE 0x4013d0
+MOV eax, 1
+RET

@@ -70,6 +70,7 @@ install-msvcrt: $(MSVCRT40_DLL)
 
 build: setup
 	WIBO="$(abspath $(WIBO))" MSVC42_DIR="$(abspath $(MSVC42_DIR))" sh build.sh
+	$(BINARY_COMP) export-asm --config binary-comp.json --target demo --clean --no-source
 
 demo: build
 	$(BINARY_COMP) exe --config binary-comp.json --target demo --functions

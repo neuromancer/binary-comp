@@ -1,0 +1,37 @@
+Function: FUN_00403500
+Address: 0x00403500
+
+MOV eax, dword ptr fs:[0]
+PUSH ebp
+MOV ebp, esp
+PUSH -1
+PUSH 0x406348
+PUSH 0x403144
+PUSH eax
+MOV dword ptr fs:[0], esp
+SUB esp, 8
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 0x18], esp
+MOV dword ptr [ebp - 4], 0
+CALL 0x4023b0
+CMP dword ptr [eax + 0x60], 0
+JE 0x403559
+MOV dword ptr [ebp - 4], 1
+CALL 0x4023b0
+CALL dword ptr [eax + 0x60]
+JMP 0x403552
+
+LAB_00403552:
+MOV dword ptr [ebp - 4], 0
+MOV dword ptr [ebp - 4], 0xffffffff
+CALL 0x403575
+MOV eax, dword ptr [ebp - 0x10]
+POP edi
+MOV dword ptr fs:[0], eax
+POP esi
+POP ebx
+MOV esp, ebp
+POP ebp
+RET

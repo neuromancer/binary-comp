@@ -1,0 +1,17 @@
+Function: FUN_00402EE0
+Address: 0x00402EE0
+
+PUSH edi
+XOR eax, eax
+MOV edi, 0x407158
+MOV ecx, 0x40
+REP stosd dword ptr es:[edi], eax
+STOSB byte ptr es:[edi], al
+MOV dword ptr [0x407268], eax
+MOV ecx, 0x407268
+POP edi
+MOV dword ptr [0x40725c], eax
+MOV dword ptr [0x407260], eax
+MOV dword ptr [ecx + 4], eax
+MOV dword ptr [ecx + 8], eax
+RET

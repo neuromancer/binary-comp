@@ -1,0 +1,21 @@
+Function: FUN_00403220
+Address: 0x00403220
+
+MOV eax, dword ptr [0x407068]
+CMP eax, 1
+JE 0x403237
+TEST eax, eax
+JNE 0x40325c
+CMP dword ptr [0x40706c], 1
+JNE 0x40325c
+PUSH 0xfc
+CALL 0x403260
+ADD esp, 4
+MOV eax, dword ptr [0x407428]
+TEST eax, eax
+JE 0x40324f
+CALL eax
+PUSH 0xff
+CALL 0x403260
+ADD esp, 4
+RET

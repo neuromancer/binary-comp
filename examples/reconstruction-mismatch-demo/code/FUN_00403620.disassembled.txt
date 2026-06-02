@@ -1,0 +1,16 @@
+Function: FUN_00403620
+Address: 0x00403620
+
+MOV eax, dword ptr [esp + 8]
+PUSH esi
+MOV esi, 1
+PUSH eax
+MOV ecx, dword ptr [esp + 0xc]
+PUSH ecx
+CALL dword ptr [0x40a174]
+TEST eax, eax
+JE 0x40363c
+XOR esi, esi
+MOV eax, esi
+POP esi
+RET

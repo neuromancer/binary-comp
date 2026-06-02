@@ -1,0 +1,70 @@
+Function: FUN_00401D50
+Address: 0x00401D50
+
+MOV eax, dword ptr fs:[0]
+PUSH ebp
+MOV ebp, esp
+PUSH -1
+PUSH 0x406010
+PUSH 0x403144
+PUSH eax
+MOV eax, dword ptr [ebp + 8]
+MOV dword ptr fs:[0], esp
+ADD eax, 8
+SUB esp, 0x14
+MOV ecx, dword ptr [eax]
+MOV dword ptr [ebp - 0x20], eax
+MOV dword ptr [ebp - 0x1c], ecx
+PUSH ebx
+CMP ecx, dword ptr [ebp + 0x14]
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 0x18], esp
+JE 0x401df9
+CMP dword ptr [ebp - 0x1c], -1
+JLE 0x401d9a
+MOV eax, dword ptr [ebp + 0x10]
+MOV ecx, dword ptr [ebp - 0x1c]
+CMP dword ptr [eax + 4], ecx
+JG 0x401d9f
+CALL 0x403580
+MOV dword ptr [ebp - 4], 0
+MOV ecx, dword ptr [ebp - 0x1c]
+MOV eax, dword ptr [ebp + 0x10]
+MOV eax, dword ptr [eax + 8]
+MOV eax, dword ptr [eax + ecx*8 + 4]
+MOV dword ptr [ebp - 0x24], eax
+TEST eax, eax
+JE 0x401dde
+PUSH 0x103
+MOV eax, dword ptr [ebp + 8]
+PUSH eax
+MOV eax, dword ptr [ebp - 0x24]
+PUSH eax
+CALL 0x4022e0
+JMP 0x401dde
+
+LAB_00401DDE:
+MOV dword ptr [ebp - 4], 0xffffffff
+MOV ecx, dword ptr [ebp - 0x1c]
+MOV eax, dword ptr [ebp + 0x10]
+MOV edx, dword ptr [eax + 8]
+MOV ecx, dword ptr [edx + ecx*8]
+MOV dword ptr [ebp - 0x1c], ecx
+CMP ecx, dword ptr [ebp + 0x14]
+JNE 0x401d89
+MOV eax, dword ptr [ebp + 0x14]
+CMP dword ptr [ebp - 0x1c], eax
+JE 0x401e06
+CALL 0x403580
+MOV eax, dword ptr [ebp - 0x1c]
+MOV ecx, dword ptr [ebp - 0x20]
+POP edi
+POP esi
+POP ebx
+MOV dword ptr [ecx], eax
+MOV eax, dword ptr [ebp - 0x10]
+MOV esp, ebp
+MOV dword ptr fs:[0], eax
+POP ebp
+RET

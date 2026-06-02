@@ -1,0 +1,22 @@
+Function: FUN_00403E50
+Address: 0x00403E50
+
+MOV ecx, dword ptr [esp + 8]
+MOV eax, dword ptr [esp + 4]
+SUB ecx, dword ptr [eax + 0x810]
+SAR ecx, 0xc
+ADD eax, ecx
+MOV ecx, dword ptr [esp + 0xc]
+MOV dl, byte ptr [ecx]
+ADD byte ptr [eax + 0x10], dl
+MOV byte ptr [ecx], 0
+MOV byte ptr [eax + 0x410], 0xf1
+CMP byte ptr [eax + 0x10], 0xf0
+JNE 0x403e95
+INC dword ptr [0x407d28]
+CMP dword ptr [0x407d28], 0x20
+JNE 0x403e95
+PUSH 0x10
+CALL 0x403d10
+ADD esp, 4
+RET

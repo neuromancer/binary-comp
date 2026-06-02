@@ -1,0 +1,33 @@
+Function: FUN_004022E0
+Address: 0x004022E0
+
+PUSH ebp
+MOV ebp, esp
+SUB esp, 4
+PUSH ebx
+PUSH ecx
+MOV eax, dword ptr [ebp + 0xc]
+ADD eax, 0xc
+MOV dword ptr [ebp - 4], eax
+MOV eax, dword ptr [ebp + 8]
+PUSH ebp
+PUSH dword ptr [ebp + 0x10]
+MOV ecx, dword ptr [ebp + 0x10]
+MOV ebp, dword ptr [ebp - 4]
+CALL 0x4013d1
+CALL eax
+MOV ebx, ebp
+POP ebp
+MOV ecx, dword ptr [ebp + 0x10]
+PUSH ebp
+MOV ebp, ebx
+CMP ecx, 0x100
+JNE 0x40231b
+MOV ecx, 2
+PUSH ecx
+CALL 0x4013d1
+POP ebp
+POP ecx
+POP ebx
+LEAVE
+RET 0xc

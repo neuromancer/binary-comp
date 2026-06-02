@@ -1,0 +1,61 @@
+Function: FUN_00401CB0
+Address: 0x00401CB0
+
+MOV eax, dword ptr [esp + 4]
+SUB esp, 0xc
+PUSH ebx
+MOV ecx, dword ptr [eax + 0x10]
+MOV dword ptr [esp + 0xc], ecx
+PUSH esi
+PUSH edi
+MOV esi, dword ptr [eax + 0xc]
+MOV edi, dword ptr [esp + 0x20]
+PUSH ebp
+MOV dword ptr [esp + 0x10], esi
+MOV dword ptr [esp + 0x14], esi
+TEST edi, edi
+JL 0x401d18
+LEA ecx, [esi*4]
+MOV eax, dword ptr [esp + 0x18]
+MOV ebp, dword ptr [esp + 0x28]
+LEA edx, [ecx + ecx*4]
+LEA ebx, [edx + eax + 4]
+CMP esi, -1
+JNE 0x401cf5
+CALL 0x403580
+SUB ebx, 0x14
+DEC esi
+CMP dword ptr [ebx], ebp
+JGE 0x401d02
+CMP dword ptr [ebx + 4], ebp
+JGE 0x401d07
+CMP esi, -1
+JNE 0x401d14
+DEC edi
+MOV ecx, dword ptr [esp + 0x14]
+MOV dword ptr [esp + 0x10], ecx
+MOV dword ptr [esp + 0x14], esi
+TEST edi, edi
+JGE 0x401ceb
+INC esi
+MOV eax, dword ptr [esp + 0x2c]
+MOV edx, dword ptr [esp + 0x30]
+MOV ecx, dword ptr [esp + 0x10]
+MOV dword ptr [eax], esi
+MOV eax, dword ptr [esp + 0x20]
+MOV dword ptr [edx], ecx
+CMP dword ptr [eax + 0xc], ecx
+JB 0x401d36
+CMP ecx, esi
+JAE 0x401d3b
+CALL 0x403580
+SHL esi, 2
+MOV eax, dword ptr [esp + 0x18]
+POP ebp
+POP edi
+LEA ecx, [esi + esi*4]
+POP esi
+ADD eax, ecx
+POP ebx
+ADD esp, 0xc
+RET

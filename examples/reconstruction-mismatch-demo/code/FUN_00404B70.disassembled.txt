@@ -1,0 +1,22 @@
+Function: FUN_00404B70
+Address: 0x00404B70
+
+MOV eax, dword ptr [esp + 8]
+PUSH esi
+MOV esi, eax
+MOV edx, dword ptr [esp + 8]
+CMP dword ptr [esi + 4], edx
+JE 0x404b93
+ADD esi, 0xc
+MOV ecx, dword ptr [0x40714c]
+LEA ecx, [ecx + ecx*2]
+LEA ecx, [eax + ecx*4]
+CMP ecx, esi
+JA 0x404b7b
+MOV eax, dword ptr [esi + 4]
+SUB eax, edx
+CMP eax, 1
+SBB eax, eax
+AND eax, esi
+POP esi
+RET

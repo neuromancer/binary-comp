@@ -1,20 +1,20 @@
 Function: FUN_00401250
 Address: 0x00401250
 
-push ebp
-mov ebp, esp
-sub esp, 4
-push ebx
-push esi
-push edi
-mov dword ptr [ebp - 4], ecx
-mov eax, dword ptr [ebp + 8]
-mov ecx, dword ptr [ebp - 4]
-mov dword ptr [ecx], eax
-jmp 0x401269
-mov eax, dword ptr [ebp - 4]
-pop edi
-pop esi
-pop ebx
-leave
-ret 4
+PUSH ebp
+MOV ebp, esp
+SUB esp, 4
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 4], ecx
+MOV eax, dword ptr [ebp + 8]
+MOV ecx, dword ptr [ebp - 4]
+MOV dword ptr [ecx], eax
+JMP 0x401269
+MOV eax, dword ptr [ebp - 4]
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET 4

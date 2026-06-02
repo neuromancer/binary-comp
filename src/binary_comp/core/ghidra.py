@@ -1,7 +1,8 @@
-"""Helpers for Ghidra text exports.
+"""Helpers for Ghidra-style text exports.
 
-Ghidra files are used as function-boundary/name inventory only. Operand-level
-semantics must come from binary disassembly.
+Ghidra files and ``binary-comp export-asm`` files are used as
+function-boundary/name inventory only. Operand-level semantics must come from
+binary disassembly.
 """
 
 from __future__ import annotations

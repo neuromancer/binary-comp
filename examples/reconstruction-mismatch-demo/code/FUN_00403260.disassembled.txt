@@ -1,0 +1,164 @@
+Function: FUN_00403260
+Address: 0x00403260
+
+SUB esp, 0x1a8
+XOR ecx, ecx
+MOV eax, 0x407398
+PUSH ebx
+MOV edx, dword ptr [esp + 0x1b0]
+PUSH esi
+PUSH edi
+PUSH ebp
+CMP dword ptr [eax], edx
+JE 0x403287
+ADD eax, 8
+INC ecx
+CMP eax, 0x407428
+JB 0x403278
+CMP dword ptr [ecx*8 + 0x407398], edx
+LEA ebx, [ecx*8]
+JNE 0x40344b
+CMP dword ptr [0x407068], 1
+JE 0x403407
+CMP dword ptr [0x407068], 0
+JNE 0x4032be
+CMP dword ptr [0x40706c], 1
+JE 0x403407
+CMP edx, 0xfc
+JE 0x40344b
+LEA eax, [esp + 0xb4]
+PUSH 0x104
+PUSH eax
+MOV ebp, dword ptr [0x40a124]
+PUSH 0
+CALL ebp
+TEST eax, eax
+JNE 0x4032fb
+MOV esi, 0x40632c
+LEA edi, [esp + 0xb4]
+MOV ecx, 5
+REP movsd dword ptr es:[edi], dword ptr [esi]
+MOVSW word ptr es:[edi], word ptr [esi]
+MOVSB byte ptr es:[edi], byte ptr [esi]
+LEA ebp, [esp + 0xb4]
+LEA edi, [esp + 0xb4]
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+CMP ecx, 0x3c
+JBE 0x40333f
+LEA edi, [esp + 0xb4]
+MOV ecx, 0xffffffff
+SUB eax, eax
+PUSH 3
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+LEA ebp, [esp + ecx + 0x7c]
+PUSH 0x406328
+PUSH ebp
+CALL 0x404410
+ADD esp, 0xc
+MOV esi, 0x40630c
+LEA edi, [esp + 0x14]
+MOV ecx, 6
+REP movsd dword ptr es:[edi], dword ptr [esi]
+MOVSW word ptr es:[edi], word ptr [esi]
+MOV edi, ebp
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+SUB edi, ecx
+MOV edx, ecx
+MOV esi, edi
+MOV ecx, 0xffffffff
+LEA edi, [esp + 0x14]
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+DEC edi
+MOV ecx, edx
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+MOV ecx, edx
+AND ecx, 3
+REP movsb byte ptr es:[edi], byte ptr [esi]
+MOV edi, 0x406308
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+SUB edi, ecx
+MOV edx, ecx
+MOV esi, edi
+MOV ecx, 0xffffffff
+LEA edi, [esp + 0x14]
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+DEC edi
+MOV ecx, edx
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+MOV ecx, edx
+AND ecx, 3
+REP movsb byte ptr es:[edi], byte ptr [esi]
+MOV edi, dword ptr [ebx + 0x40739c]
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+SUB edi, ecx
+MOV esi, edi
+MOV edx, ecx
+LEA edi, [esp + 0x14]
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+DEC edi
+MOV ecx, edx
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+MOV ecx, edx
+PUSH 0x12010
+AND ecx, 3
+PUSH 0x4062e0
+REP movsb byte ptr es:[edi], byte ptr [esi]
+LEA eax, [esp + 0x1c]
+PUSH eax
+CALL 0x404370
+ADD esp, 0xc
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 0x1a8
+RET
+CMP dword ptr [0x4092d0], 0
+JE 0x40341d
+MOV eax, dword ptr [0x4092d0]
+MOV esi, dword ptr [eax + 0x48]
+CMP esi, -1
+JNE 0x403427
+PUSH -0xc
+CALL dword ptr [0x40a0f0]
+MOV esi, eax
+MOV edx, dword ptr [ebx + 0x40739c]
+PUSH 0
+LEA eax, [esp + 0x14]
+MOV edi, edx
+PUSH eax
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+DEC ecx
+PUSH ecx
+PUSH edx
+PUSH esi
+CALL dword ptr [0x40a168]
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 0x1a8
+RET

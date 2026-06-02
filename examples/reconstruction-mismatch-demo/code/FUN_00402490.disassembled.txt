@@ -1,0 +1,54 @@
+Function: FUN_00402490
+Address: 0x00402490
+
+PUSH ebx
+PUSH esi
+PUSH edi
+CALL 0x402550
+CMP dword ptr [0x4070c4], 1
+MOV esi, dword ptr [esp + 0x10]
+JNE 0x4024b3
+PUSH esi
+CALL dword ptr [0x40a11c]
+PUSH eax
+CALL dword ptr [0x40a118]
+MOV dword ptr [0x4070c0], 1
+CMP dword ptr [esp + 0x14], 0
+MOV ebx, dword ptr [esp + 0x18]
+MOV byte ptr [0x4070bc], bl
+JNE 0x40250d
+CMP dword ptr [0x4093d8], 0
+JE 0x4024fb
+MOV edi, dword ptr [0x4093d4]
+SUB edi, 4
+CMP edi, dword ptr [0x4093d8]
+JB 0x4024fb
+MOV eax, dword ptr [edi]
+TEST eax, eax
+JE 0x4024f0
+CALL eax
+SUB edi, 4
+CMP edi, dword ptr [0x4093d8]
+JAE 0x4024e8
+PUSH 0x407024
+PUSH 0x40701c
+CALL 0x402570
+ADD esp, 8
+PUSH 0x40702c
+PUSH 0x407028
+CALL 0x402570
+ADD esp, 8
+TEST ebx, ebx
+JE 0x40252c
+CALL 0x402560
+POP edi
+POP esi
+POP ebx
+RET
+MOV dword ptr [0x4070c4], 1
+PUSH esi
+CALL dword ptr [0x40a114]
+POP edi
+POP esi
+POP ebx
+RET

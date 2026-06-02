@@ -1,0 +1,34 @@
+Function: FUN_004014D0
+Address: 0x004014D0
+
+PUSH ebp
+MOV ebp, esp
+SUB esp, 8
+PUSH ebx
+PUSH esi
+PUSH edi
+CLD
+MOV dword ptr [ebp - 8], eax
+PUSH 0
+MOV eax, dword ptr [ebp - 8]
+PUSH 0
+MOV ecx, dword ptr [ebp + 0x14]
+PUSH 0
+MOV edx, dword ptr [ebp + 0x10]
+PUSH eax
+PUSH ecx
+PUSH edx
+MOV eax, dword ptr [ebp + 0xc]
+PUSH eax
+MOV ecx, dword ptr [ebp + 8]
+PUSH ecx
+CALL 0x401870
+ADD esp, 0x20
+MOV dword ptr [ebp - 4], eax
+POP edi
+POP esi
+POP ebx
+MOV eax, dword ptr [ebp - 4]
+MOV esp, ebp
+POP ebp
+RET

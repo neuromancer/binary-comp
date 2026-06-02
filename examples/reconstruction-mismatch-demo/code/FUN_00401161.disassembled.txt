@@ -1,0 +1,6 @@
+Function: FUN_00401161
+Address: 0x00401161
+
+LEA ecx, [ebp - 0x10]
+CALL 0x401000
+RET

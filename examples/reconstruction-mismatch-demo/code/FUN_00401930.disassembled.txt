@@ -1,0 +1,226 @@
+Function: FUN_00401930
+Address: 0x00401930
+
+MOV eax, dword ptr [esp + 8]
+SUB esp, 0x18
+PUSH ebx
+MOV ecx, dword ptr [eax + 8]
+MOV dword ptr [esp + 8], ecx
+PUSH esi
+PUSH edi
+CMP ecx, -1
+PUSH ebp
+JL 0x401950
+MOV eax, dword ptr [esp + 0x3c]
+CMP dword ptr [eax + 4], ecx
+JG 0x401955
+CALL 0x403580
+MOV eax, dword ptr [esp + 0x2c]
+CMP dword ptr [eax], 0xe06d7363
+JNE 0x4019db
+CMP dword ptr [eax + 0x10], 3
+JNE 0x4019db
+CMP dword ptr [eax + 0x14], 0x19930520
+JNE 0x4019db
+CMP dword ptr [eax + 0x1c], 0
+JNE 0x4019db
+CALL 0x4023b0
+CMP dword ptr [eax + 0x6c], 0
+JE 0x401bc6
+CALL 0x4023b0
+MOV eax, dword ptr [eax + 0x6c]
+MOV dword ptr [esp + 0x2c], eax
+CALL 0x4023b0
+MOV eax, dword ptr [eax + 0x70]
+PUSH 1
+MOV ecx, dword ptr [esp + 0x30]
+MOV dword ptr [esp + 0x38], eax
+PUSH ecx
+CALL 0x403600
+ADD esp, 8
+TEST eax, eax
+JNE 0x4019b5
+CALL 0x403580
+MOV eax, dword ptr [esp + 0x2c]
+CMP dword ptr [eax], 0xe06d7363
+JNE 0x4019db
+CMP dword ptr [eax + 0x10], 3
+JNE 0x4019db
+CMP dword ptr [eax + 0x14], 0x19930520
+JNE 0x4019db
+CMP dword ptr [eax + 0x1c], 0
+JNE 0x4019db
+CALL 0x403580
+MOV eax, dword ptr [esp + 0x2c]
+CMP dword ptr [eax], 0xe06d7363
+JNE 0x401b82
+CMP dword ptr [eax + 0x10], 3
+JNE 0x401b82
+CMP dword ptr [eax + 0x14], 0x19930520
+JNE 0x401b82
+LEA eax, [esp + 0x20]
+LEA ecx, [esp + 0x1c]
+MOV edx, dword ptr [esp + 0x14]
+PUSH eax
+MOV eax, dword ptr [esp + 0x48]
+PUSH ecx
+MOV ecx, dword ptr [esp + 0x44]
+PUSH edx
+PUSH eax
+PUSH ecx
+CALL 0x401cb0
+MOV ecx, dword ptr [esp + 0x30]
+MOV dword ptr [esp + 0x24], eax
+ADD esp, 0x14
+CMP dword ptr [esp + 0x20], ecx
+JBE 0x401b64
+MOV ecx, dword ptr [esp + 0x14]
+MOV eax, dword ptr [esp + 0x10]
+CMP dword ptr [eax], ecx
+JG 0x401b4d
+CMP dword ptr [eax + 4], ecx
+JL 0x401b4d
+MOV ecx, dword ptr [eax + 0x10]
+MOV edx, dword ptr [eax + 0xc]
+MOV dword ptr [esp + 0x18], edx
+TEST edx, edx
+JE 0x401b4d
+MOV eax, dword ptr [esp + 0x2c]
+MOV edx, dword ptr [eax + 0x1c]
+MOV eax, dword ptr [edx + 0xc]
+LEA ebp, [eax + 4]
+MOV edx, dword ptr [eax]
+TEST edx, edx
+JE 0x401b04
+MOV eax, dword ptr [esp + 0x2c]
+MOV esi, dword ptr [ecx + 4]
+TEST esi, esi
+MOV ebx, dword ptr [eax + 0x1c]
+MOV eax, dword ptr [ebp]
+MOV dword ptr [esp + 0x24], ebx
+JE 0x401aef
+CMP byte ptr [esi + 8], 0
+JE 0x401aef
+CMP esi, dword ptr [eax + 4]
+JE 0x401ac9
+ADD esi, 8
+MOV edi, dword ptr [eax + 4]
+ADD edi, 8
+MOV bl, byte ptr [esi]
+CMP bl, byte ptr [edi]
+JNE 0x401ac0
+OR bl, bl
+JE 0x401abc
+MOV bl, byte ptr [esi + 1]
+CMP bl, byte ptr [edi + 1]
+JNE 0x401ac0
+ADD esi, 2
+ADD edi, 2
+OR bl, bl
+JNE 0x401aa0
+XOR esi, esi
+JMP 0x401ac5
+SBB esi, esi
+SBB esi, -1
+TEST esi, esi
+JNE 0x401aeb
+TEST byte ptr [eax], 2
+JE 0x401ad3
+TEST byte ptr [ecx], 8
+JE 0x401aeb
+MOV eax, dword ptr [esp + 0x24]
+MOV eax, dword ptr [eax]
+TEST al, 1
+JE 0x401ae2
+TEST byte ptr [ecx], 1
+JE 0x401aeb
+TEST al, 2
+JE 0x401aef
+TEST byte ptr [ecx], 2
+JNE 0x401aef
+XOR eax, eax
+JMP 0x401af4
+MOV eax, 1
+TEST eax, eax
+JNE 0x401b18
+DEC edx
+ADD ebp, 4
+TEST edx, edx
+JNE 0x401a77
+ADD ecx, 0x10
+DEC dword ptr [esp + 0x18]
+CMP dword ptr [esp + 0x18], 0
+JNE 0x401a60
+JMP 0x401b4d
+MOV eax, dword ptr [esp + 0x48]
+MOV edx, dword ptr [esp + 0x44]
+MOV ebx, dword ptr [esp + 0x10]
+PUSH eax
+PUSH edx
+MOV eax, dword ptr [ebp]
+MOV edx, dword ptr [esp + 0x40]
+PUSH ebx
+PUSH eax
+PUSH ecx
+MOV ecx, dword ptr [esp + 0x50]
+MOV eax, dword ptr [esp + 0x48]
+PUSH ecx
+PUSH edx
+MOV ecx, dword ptr [esp + 0x4c]
+PUSH eax
+MOV edx, dword ptr [esp + 0x4c]
+PUSH ecx
+PUSH edx
+CALL 0x401e40
+ADD esp, 0x28
+ADD dword ptr [esp + 0x10], 0x14
+INC dword ptr [esp + 0x1c]
+MOV eax, dword ptr [esp + 0x1c]
+CMP dword ptr [esp + 0x20], eax
+JA 0x401a35
+CMP byte ptr [esp + 0x40], 0
+JE 0x401bc6
+MOV eax, dword ptr [esp + 0x2c]
+PUSH 1
+PUSH eax
+CALL 0x402230
+ADD esp, 8
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 0x18
+RET
+CMP byte ptr [esp + 0x40], 0
+JNE 0x401bc1
+MOV eax, dword ptr [esp + 0x48]
+MOV ecx, dword ptr [esp + 0x44]
+MOV edx, dword ptr [esp + 0x14]
+PUSH eax
+MOV eax, dword ptr [esp + 0x40]
+PUSH ecx
+MOV ecx, dword ptr [esp + 0x40]
+PUSH edx
+MOV edx, dword ptr [esp + 0x40]
+PUSH eax
+MOV eax, dword ptr [esp + 0x40]
+PUSH ecx
+MOV ecx, dword ptr [esp + 0x40]
+PUSH edx
+PUSH eax
+PUSH ecx
+CALL 0x401bd0
+ADD esp, 0x20
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 0x18
+RET
+CALL 0x403500
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 0x18
+RET

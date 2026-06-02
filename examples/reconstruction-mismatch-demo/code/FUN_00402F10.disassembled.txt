@@ -1,0 +1,7 @@
+Function: FUN_00402F10
+Address: 0x00402F10
+
+PUSH -3
+CALL 0x402c00
+ADD esp, 4
+RET

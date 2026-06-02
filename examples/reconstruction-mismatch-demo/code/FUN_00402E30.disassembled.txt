@@ -1,0 +1,18 @@
+Function: FUN_00402E30
+Address: 0x00402E30
+
+MOV dword ptr [0x407274], 0
+MOV eax, dword ptr [esp + 4]
+CMP eax, -2
+JNE 0x402e53
+MOV dword ptr [0x407274], 1
+JMP dword ptr [0x40a144]
+CMP eax, -3
+JNE 0x402e68
+MOV dword ptr [0x407274], 1
+JMP dword ptr [0x40a140]
+CMP eax, -4
+JNE 0x402e7c
+MOV dword ptr [0x407274], 1
+MOV eax, dword ptr [0x407508]
+RET

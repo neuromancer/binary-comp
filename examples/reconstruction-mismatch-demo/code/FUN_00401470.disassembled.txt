@@ -1,0 +1,32 @@
+Function: FUN_00401470
+Address: 0x00401470
+
+PUSH ebp
+MOV ebp, esp
+SUB esp, 8
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV eax, dword ptr fs:[0]
+MOV dword ptr [ebp - 8], eax
+MOV dword ptr [ebp - 4], 0x40149c
+PUSH 0
+MOV eax, dword ptr [ebp + 0xc]
+PUSH eax
+MOV eax, dword ptr [ebp - 4]
+PUSH eax
+MOV eax, dword ptr [ebp + 8]
+PUSH eax
+CALL 0x4055a2
+MOV eax, dword ptr [ebp + 0xc]
+AND dword ptr [eax + 4], 0xfffffffd
+MOV eax, dword ptr fs:[0]
+MOV ebx, dword ptr [ebp - 8]
+MOV dword ptr [ebx], eax
+MOV dword ptr fs:[0], ebx
+JMP 0x4014ba
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET 8

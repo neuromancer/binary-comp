@@ -1,0 +1,37 @@
+Function: FUN_00402330
+Address: 0x00402330
+
+PUSH esi
+CALL 0x403860
+CALL dword ptr [0x40a104]
+MOV dword ptr [0x407080], eax
+CMP eax, -1
+JNE 0x40234a
+XOR eax, eax
+POP esi
+RET
+PUSH 0x74
+PUSH 1
+CALL 0x4037b0
+ADD esp, 8
+MOV esi, eax
+TEST esi, esi
+JE 0x40238c
+PUSH esi
+MOV eax, dword ptr [0x407080]
+PUSH eax
+CALL dword ptr [0x40a100]
+TEST eax, eax
+JE 0x40238c
+PUSH esi
+CALL 0x402390
+ADD esp, 4
+CALL dword ptr [0x40a0fc]
+MOV dword ptr [esi], eax
+MOV eax, 1
+MOV dword ptr [esi + 4], 0xffffffff
+POP esi
+RET
+XOR eax, eax
+POP esi
+RET

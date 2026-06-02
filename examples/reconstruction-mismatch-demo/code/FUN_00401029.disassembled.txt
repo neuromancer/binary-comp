@@ -1,25 +1,25 @@
 Function: FUN_00401029
 Address: 0x00401029
 
-push ebp
-mov ebp, esp
-sub esp, 8
-push ebx
-push esi
-push edi
-mov dword ptr [ebp - 8], ecx
-mov eax, dword ptr [ebp - 8]
-mov eax, dword ptr [eax]
-add eax, dword ptr [ebp + 8]
-mov dword ptr [ebp - 4], eax
-cmp dword ptr [ebp - 4], 0xa
-jle 0x401052
-mov eax, dword ptr [0x407038]
-add dword ptr [ebp - 4], eax
-mov eax, dword ptr [ebp - 4]
-jmp 0x40105a
-pop edi
-pop esi
-pop ebx
-leave
-ret 4
+PUSH ebp
+MOV ebp, esp
+SUB esp, 8
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 8], ecx
+MOV eax, dword ptr [ebp - 8]
+MOV eax, dword ptr [eax]
+ADD eax, dword ptr [ebp + 8]
+MOV dword ptr [ebp - 4], eax
+CMP dword ptr [ebp - 4], 0xa
+JLE 0x401052
+MOV eax, dword ptr [0x407038]
+ADD dword ptr [ebp - 4], eax
+MOV eax, dword ptr [ebp - 4]
+JMP 0x40105a
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET 4

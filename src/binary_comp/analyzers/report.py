@@ -334,7 +334,7 @@ def format_similarity_report(report: SimilarityReport) -> str:
         f"  >=90%: {report.above_90}",
         f"  <90%: {report.below_90}",
         f"  Errors/NOT FOUND: {report.errors}",
-        f"  Missing Ghidra asm: {report.missing_asm}",
+        f"  Missing disassembly exports: {report.missing_asm}",
         f"  ASM fallback: {report.asm_fallbacks}",
         f"  Average similarity: {average:.2f}%",
     ])

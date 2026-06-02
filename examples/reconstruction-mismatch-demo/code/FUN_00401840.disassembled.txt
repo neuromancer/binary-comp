@@ -1,0 +1,14 @@
+Function: FUN_00401840
+Address: 0x00401840
+
+CMP dword ptr [0x407068], 2
+JE 0x40184e
+CALL 0x403220
+MOV eax, dword ptr [esp + 4]
+PUSH eax
+CALL 0x403260
+ADD esp, 4
+PUSH 0xff
+CALL dword ptr [0x407064]
+ADD esp, 4
+RET

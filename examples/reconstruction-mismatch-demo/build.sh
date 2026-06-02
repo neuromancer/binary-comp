@@ -37,9 +37,3 @@ rm -rf "$EXAMPLE_DIR/artifacts" "$EXAMPLE_DIR/code"
 
 compile_one original src/original/original.cpp
 compile_one rebuilt src/rebuilt/rebuilt.cpp
-
-PYTHONPATH="$EXAMPLE_DIR/../../src${PYTHONPATH:+:$PYTHONPATH}" \
-    python3 "$EXAMPLE_DIR/tools/generate_code_exports.py" \
-    "$EXAMPLE_DIR/artifacts/original/original.exe" \
-    "$EXAMPLE_DIR/artifacts/original/original.map" \
-    "$EXAMPLE_DIR/code"

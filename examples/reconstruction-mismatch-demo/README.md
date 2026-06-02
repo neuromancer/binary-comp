@@ -55,24 +55,69 @@ make build WIBO=/path/to/wibo MSVC42_DIR=/path/to/MSVC420
 ```
 
 `make build` compiles both executables, writes MSVC maps and assembly listings
-under `artifacts/`, and generates small `code/FUN_*.disassembled.txt` files
-from the original executable for function-boundary hints.
+under `artifacts/`, and runs `binary-comp export-asm --no-source` to
+auto-discover functions from the original executable. The generated
+`code/FUN_*.disassembled.txt` files use the same shape as Ghidra disassembly
+exports, but this example does not require Ghidra or an original linker map.
 
 The `msvcrt40.dll` copy is required for `wibo`: the DLL bundled in the MSVC420
 archive is replaced before `CL.EXE` is invoked.
 
-## Run The Example
+## Step By Step
 
 From this directory, with `binary-comp` installed:
 
+1. Download the local toolchain and the known-good DLL used by `wibo`:
+
+   ```bash
+   make setup
+   ```
+
+2. Compile the original and rebuilt MSVC 4.x executables, then auto-discover
+   Ghidra-style exports from the original PE:
+
+   ```bash
+   make build
+   ```
+
+`make build` runs the export step automatically. To run that step by hand:
+
 ```bash
-binary-comp exe --config binary-comp.json --target demo --functions
-binary-comp report --config binary-comp.json --target demo --no-build
-binary-comp compare --config binary-comp.json --target demo --no-build Door::canOpen code/FUN_0040109E.disassembled.txt
-binary-comp values --config binary-comp.json --target demo --no-build --include-stack-locals
-binary-comp data --config binary-comp.json --target demo
-binary-comp seh --config binary-comp.json --target demo --report --no-build
+binary-comp export-asm --config binary-comp.json --target demo --clean --no-source
 ```
+
+The export summary should show discovered targets only:
+
+```text
+Wrote 92 disassembly export(s) to .../code
+Selected 0 source target(s), 0 map target(s), 92 discovered target(s); 92 boundary marker(s).
+```
+
+3. Inspect executable layout and function address mapping:
+
+   ```bash
+   binary-comp exe --config binary-comp.json --target demo --functions
+   ```
+
+4. Generate the function similarity report:
+
+   ```bash
+   binary-comp report --config binary-comp.json --target demo --no-build
+   ```
+
+5. Drill into one mismatching function:
+
+   ```bash
+   binary-comp compare --config binary-comp.json --target demo --no-build Door::canOpen code/FUN_0040109E.disassembled.txt
+   ```
+
+6. Check operand value, global data, and SEH differences:
+
+   ```bash
+   binary-comp values --config binary-comp.json --target demo --no-build --include-stack-locals
+   binary-comp data --config binary-comp.json --target demo
+   binary-comp seh --config binary-comp.json --target demo --report --no-build
+   ```
 
 Or run the demonstration target:
 
@@ -107,7 +152,7 @@ Small excerpts from the expected output:
   ScoreTable::score                             0x401029  100.00%
   Reactor::tick                                 0x401061  96.15%
   Door::canOpen                                 0x40109E  80.00%
-  LessonLog::severity                           0x4010E8  54.35%
+  LessonLog::severity                           0x4010E8  52.94%
 ```
 
 ```text

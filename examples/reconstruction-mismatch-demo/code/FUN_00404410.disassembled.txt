@@ -1,0 +1,112 @@
+Function: FUN_00404410
+Address: 0x00404410
+
+MOV ecx, dword ptr [esp + 0xc]
+PUSH edi
+TEST ecx, ecx
+JE 0x404493
+PUSH esi
+PUSH ebx
+MOV ebx, ecx
+MOV esi, dword ptr [esp + 0x14]
+TEST esi, 3
+MOV edi, dword ptr [esp + 0x10]
+JNE 0x404434
+SHR ecx, 2
+JNE 0x4044a1
+JMP 0x404455
+MOV al, byte ptr [esi]
+INC esi
+MOV byte ptr [edi], al
+INC edi
+DEC ecx
+JE 0x404462
+TEST al, al
+JE 0x40446a
+TEST esi, 3
+JNE 0x404434
+MOV ebx, ecx
+SHR ecx, 2
+JNE 0x4044a1
+AND ebx, 3
+JE 0x404462
+MOV al, byte ptr [esi]
+INC esi
+MOV byte ptr [edi], al
+INC edi
+TEST al, al
+JE 0x40448e
+DEC ebx
+JNE 0x404455
+MOV eax, dword ptr [esp + 0x10]
+POP ebx
+POP esi
+POP edi
+RET
+TEST edi, 3
+JE 0x404484
+MOV byte ptr [edi], al
+INC edi
+DEC ecx
+JE 0x404506
+TEST edi, 3
+JNE 0x404472
+MOV ebx, ecx
+SHR ecx, 2
+JNE 0x4044f7
+MOV byte ptr [edi], al
+INC edi
+DEC ebx
+JNE 0x40448b
+POP ebx
+POP esi
+MOV eax, dword ptr [esp + 8]
+POP edi
+RET
+MOV dword ptr [edi], edx
+ADD edi, 4
+DEC ecx
+JE 0x404450
+MOV edx, 0x7efefeff
+MOV eax, dword ptr [esi]
+ADD edx, eax
+XOR eax, 0xffffffff
+XOR eax, edx
+MOV edx, dword ptr [esi]
+ADD esi, 4
+TEST eax, 0x81010100
+JE 0x404499
+TEST dl, dl
+JE 0x4044eb
+TEST dh, dh
+JE 0x4044e1
+TEST edx, 0xff0000
+JE 0x4044d7
+TEST edx, 0xff000000
+JNE 0x404499
+MOV dword ptr [edi], edx
+JMP 0x4044ef
+AND edx, 0xffff
+MOV dword ptr [edi], edx
+JMP 0x4044ef
+AND edx, 0xff
+MOV dword ptr [edi], edx
+JMP 0x4044ef
+XOR edx, edx
+MOV dword ptr [edi], edx
+ADD edi, 4
+XOR eax, eax
+DEC ecx
+JE 0x404501
+XOR eax, eax
+MOV dword ptr [edi], eax
+ADD edi, 4
+DEC ecx
+JNE 0x4044f9
+AND ebx, 3
+JNE 0x40448b
+MOV eax, dword ptr [esp + 0x10]
+POP ebx
+POP esi
+POP edi
+RET

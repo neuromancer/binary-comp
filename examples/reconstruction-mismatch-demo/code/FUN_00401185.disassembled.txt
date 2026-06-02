@@ -1,16 +1,16 @@
 Function: FUN_00401185
 Address: 0x00401185
 
-push ebp
-mov ebp, esp
-push ebx
-push esi
-push edi
-mov eax, dword ptr [ebp + 8]
-inc eax
-jmp 0x401194
-pop edi
-pop esi
-pop ebx
-leave
-ret
+PUSH ebp
+MOV ebp, esp
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV eax, dword ptr [ebp + 8]
+INC eax
+JMP 0x401194
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET

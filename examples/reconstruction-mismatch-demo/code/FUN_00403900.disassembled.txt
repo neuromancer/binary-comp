@@ -1,0 +1,11 @@
+Function: FUN_00403900
+Address: 0x00403900
+
+PUSH ebp
+MOV eax, dword ptr [esp + 8]
+MOV ebp, esp
+MOV ecx, dword ptr [eax*4 + 0x407430]
+PUSH ecx
+CALL dword ptr [0x40a188]
+POP ebp
+RET

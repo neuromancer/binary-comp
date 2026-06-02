@@ -36,6 +36,7 @@ class Instruction:
     op_str: str
     operands: tuple[Operand, ...]
     raw: str
+    size: int = 0
 
 
 def require_capstone() -> None:
@@ -146,6 +147,7 @@ def disassemble_x86(
             op_str=insn.op_str,
             operands=operands,
             raw=f"{insn.mnemonic} {insn.op_str}".strip(),
+            size=insn.size,
         ))
 
     if remove_jump_tables:

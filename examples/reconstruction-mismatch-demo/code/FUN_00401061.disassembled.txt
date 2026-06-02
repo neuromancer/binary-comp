@@ -1,29 +1,29 @@
 Function: FUN_00401061
 Address: 0x00401061
 
-push ebp
-mov ebp, esp
-sub esp, 4
-push ebx
-push esi
-push edi
-mov dword ptr [ebp - 4], ecx
-mov eax, dword ptr [ebp - 4]
-add dword ptr [eax], 3
-cmp dword ptr [ebp + 8], 0
-jle 0x40108d
-xor eax, eax
-mov ecx, dword ptr [ebp + 8]
-add ecx, ecx
-sub eax, ecx
-neg eax
-mov ecx, dword ptr [ebp - 4]
-sub dword ptr [ecx], eax
-mov eax, dword ptr [ebp - 4]
-mov eax, dword ptr [eax]
-jmp 0x401097
-pop edi
-pop esi
-pop ebx
-leave
-ret 4
+PUSH ebp
+MOV ebp, esp
+SUB esp, 4
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 4], ecx
+MOV eax, dword ptr [ebp - 4]
+ADD dword ptr [eax], 3
+CMP dword ptr [ebp + 8], 0
+JLE 0x40108d
+XOR eax, eax
+MOV ecx, dword ptr [ebp + 8]
+ADD ecx, ecx
+SUB eax, ecx
+NEG eax
+MOV ecx, dword ptr [ebp - 4]
+SUB dword ptr [ecx], eax
+MOV eax, dword ptr [ebp - 4]
+MOV eax, dword ptr [eax]
+JMP 0x401097
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET 4

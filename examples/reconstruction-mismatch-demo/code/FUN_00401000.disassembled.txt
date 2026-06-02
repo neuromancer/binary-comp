@@ -1,22 +1,22 @@
 Function: FUN_00401000
 Address: 0x00401000
 
-push ebp
-mov ebp, esp
-sub esp, 4
-push ebx
-push esi
-push edi
-mov dword ptr [ebp - 4], ecx
-mov eax, dword ptr [ebp - 4]
-cmp dword ptr [eax], 0
-je 0x40101f
-mov eax, dword ptr [ebp - 4]
-mov eax, dword ptr [eax]
-inc dword ptr [eax]
-jmp 0x401024
-pop edi
-pop esi
-pop ebx
-leave
-ret
+PUSH ebp
+MOV ebp, esp
+SUB esp, 4
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 4], ecx
+MOV eax, dword ptr [ebp - 4]
+CMP dword ptr [eax], 0
+JE 0x40101f
+MOV eax, dword ptr [ebp - 4]
+MOV eax, dword ptr [eax]
+INC dword ptr [eax]
+JMP 0x401024
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET

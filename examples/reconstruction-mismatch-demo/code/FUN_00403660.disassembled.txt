@@ -1,0 +1,125 @@
+Function: FUN_00403660
+Address: 0x00403660
+
+PUSH ebp
+MOV ebp, esp
+PUSH edi
+PUSH esi
+MOV esi, dword ptr [ebp + 0xc]
+MOV edi, dword ptr [ebp + 8]
+MOV ecx, dword ptr [ebp + 0x10]
+CMP edi, esi
+JBE 0x40367e
+MOV eax, esi
+ADD eax, ecx
+CMP edi, eax
+JB 0x40370c
+TEST edi, 3
+JNE 0x4036d8
+MOV edx, ecx
+AND edx, 3
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+JMP dword ptr [edx*4 + 0x403698]
+
+LAB_004036BC:
+MOV ax, word ptr [esi]
+MOV word ptr [edi], ax
+MOV eax, dword ptr [ebp + 8]
+POP esi
+POP edi
+LEAVE
+RET
+
+LAB_004036CC:
+MOV al, byte ptr [esi]
+MOV byte ptr [edi], al
+MOV eax, dword ptr [ebp + 8]
+POP esi
+POP edi
+LEAVE
+RET
+
+LAB_004036D8:
+CMP ecx, 0xc
+JBE 0x403700
+MOV edx, edi
+NEG edx
+AND edx, 3
+SUB ecx, edx
+MOV eax, ecx
+MOV ecx, edx
+REP movsb byte ptr es:[edi], byte ptr [esi]
+MOV ecx, eax
+AND eax, 3
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+JMP dword ptr [eax*4 + 0x403698]
+
+LAB_00403700:
+REP movsb byte ptr es:[edi], byte ptr [esi]
+MOV eax, dword ptr [ebp + 8]
+POP esi
+POP edi
+LEAVE
+RET
+
+LAB_0040370C:
+STD
+ADD esi, ecx
+ADD edi, ecx
+TEST edi, 3
+JNE 0x403778
+MOV edx, ecx
+AND edx, 3
+SUB esi, 4
+SUB edi, 4
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+JMP dword ptr [edx*4 + 0x403730]
+
+LAB_00403758:
+MOV ax, word ptr [esi + 2]
+MOV word ptr [edi + 2], ax
+CLD
+MOV eax, dword ptr [ebp + 8]
+POP esi
+POP edi
+LEAVE
+RET
+MOV al, byte ptr [esi + 3]
+MOV byte ptr [edi + 3], al
+CLD
+MOV eax, dword ptr [ebp + 8]
+POP esi
+POP edi
+LEAVE
+RET
+
+LAB_00403778:
+DEC esi
+DEC edi
+CMP ecx, 0xc
+JBE 0x4037a4
+NEG edx
+AND edx, 3
+SUB ecx, edx
+MOV eax, ecx
+MOV ecx, edx
+REP movsb byte ptr es:[edi], byte ptr [esi]
+MOV ecx, eax
+AND eax, 3
+SUB esi, 3
+SUB edi, 3
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+JMP dword ptr [eax*4 + 0x403730]
+
+LAB_004037A4:
+REP movsb byte ptr es:[edi], byte ptr [esi]
+CLD
+MOV eax, dword ptr [ebp + 8]
+POP esi
+POP edi
+LEAVE
+RET

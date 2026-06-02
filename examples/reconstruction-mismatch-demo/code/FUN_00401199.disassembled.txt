@@ -1,47 +1,47 @@
 Function: FUN_00401199
 Address: 0x00401199
 
-push ebp
-mov ebp, esp
-sub esp, 0x10
-push ebx
-push esi
-push edi
-push 4
-lea ecx, [ebp - 0x10]
-call 0x401250
-push 0xc
-lea ecx, [ebp - 4]
-call 0x401280
-push 0x4d2
-lea ecx, [ebp - 8]
-call 0x4012b0
-push 2
-lea ecx, [ebp - 0xc]
-call 0x4012e0
-push 7
-lea ecx, [ebp - 8]
-call 0x40109e
-mov ebx, eax
-push 3
-lea ecx, [ebp - 4]
-call 0x401061
-add ebx, eax
-push 5
-call 0x401185
-add esp, 4
-add ebx, eax
-push 1
-lea ecx, [ebp - 0xc]
-call 0x4010e8
-add ebx, eax
-push 9
-lea ecx, [ebp - 0x10]
-call 0x401029
-add eax, ebx
-jmp 0x40120e
-pop edi
-pop esi
-pop ebx
-leave
-ret
+PUSH ebp
+MOV ebp, esp
+SUB esp, 0x10
+PUSH ebx
+PUSH esi
+PUSH edi
+PUSH 4
+LEA ecx, [ebp - 0x10]
+CALL 0x401250
+PUSH 0xc
+LEA ecx, [ebp - 4]
+CALL 0x401280
+PUSH 0x4d2
+LEA ecx, [ebp - 8]
+CALL 0x4012b0
+PUSH 2
+LEA ecx, [ebp - 0xc]
+CALL 0x4012e0
+PUSH 7
+LEA ecx, [ebp - 8]
+CALL 0x40109e
+MOV ebx, eax
+PUSH 3
+LEA ecx, [ebp - 4]
+CALL 0x401061
+ADD ebx, eax
+PUSH 5
+CALL 0x401185
+ADD esp, 4
+ADD ebx, eax
+PUSH 1
+LEA ecx, [ebp - 0xc]
+CALL 0x4010e8
+ADD ebx, eax
+PUSH 9
+LEA ecx, [ebp - 0x10]
+CALL 0x401029
+ADD eax, ebx
+JMP 0x40120e
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET

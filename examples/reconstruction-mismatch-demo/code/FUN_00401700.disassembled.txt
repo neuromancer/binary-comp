@@ -1,0 +1,81 @@
+Function: FUN_00401700
+Address: 0x00401700
+
+MOV eax, dword ptr fs:[0]
+PUSH ebp
+MOV ebp, esp
+PUSH -1
+PUSH 0x406000
+PUSH 0x403144
+PUSH eax
+MOV dword ptr fs:[0], esp
+SUB esp, 0x10
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 0x18], esp
+CALL dword ptr [0x40a0f8]
+XOR edx, edx
+MOV ecx, eax
+MOV dl, ah
+AND ecx, 0xff
+SHR eax, 0x10
+MOV dword ptr [0x407094], edx
+MOV dword ptr [0x407090], ecx
+MOV dword ptr [0x407088], eax
+SHL ecx, 8
+ADD ecx, edx
+MOV dword ptr [0x40708c], ecx
+CALL 0x403100
+TEST eax, eax
+JNE 0x40176a
+PUSH 0x1c
+CALL 0x401840
+ADD esp, 4
+CALL 0x402330
+TEST eax, eax
+JNE 0x40177d
+PUSH 0x10
+CALL 0x401840
+ADD esp, 4
+MOV dword ptr [ebp - 4], 0
+CALL 0x402f20
+CALL 0x402f10
+CALL dword ptr [0x40a0f4]
+MOV dword ptr [0x4093e0], eax
+CALL 0x402a70
+MOV dword ptr [0x40705c], eax
+TEST eax, eax
+JE 0x4017b0
+CMP dword ptr [0x4093e0], 0
+JNE 0x4017ba
+PUSH -1
+CALL 0x402450
+ADD esp, 4
+CALL 0x402800
+CALL 0x402710
+CALL 0x402420
+MOV eax, dword ptr [0x4070a4]
+MOV dword ptr [0x4070a8], eax
+PUSH eax
+MOV eax, dword ptr [0x40709c]
+PUSH eax
+MOV eax, dword ptr [0x407098]
+PUSH eax
+CALL 0x401199
+ADD esp, 0xc
+PUSH eax
+CALL 0x402450
+JMP 0x401817
+
+LAB_00401817:
+ADD esp, 4
+MOV dword ptr [ebp - 4], 0xffffffff
+MOV eax, dword ptr [ebp - 0x10]
+POP edi
+MOV dword ptr fs:[0], eax
+POP esi
+POP ebx
+MOV esp, ebp
+POP ebp
+RET

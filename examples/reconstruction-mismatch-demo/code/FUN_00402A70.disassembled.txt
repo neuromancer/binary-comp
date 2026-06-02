@@ -1,0 +1,175 @@
+Function: FUN_00402A70
+Address: 0x00402A70
+
+SUB esp, 4
+PUSH ebx
+PUSH esi
+PUSH edi
+XOR ebx, ebx
+PUSH ebp
+XOR edi, edi
+MOV esi, dword ptr [0x40a134]
+CMP dword ptr [0x407154], ebx
+JNE 0x402abf
+CALL esi
+CMP eax, ebx
+MOV edi, eax
+JE 0x402a9d
+MOV dword ptr [0x407154], 1
+JMP 0x402abf
+CALL dword ptr [0x40a12c]
+MOV ebx, eax
+TEST ebx, ebx
+JE 0x402ab5
+MOV dword ptr [0x407154], 2
+JMP 0x402abf
+XOR eax, eax
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
+CMP dword ptr [0x407154], 1
+JNE 0x402b6e
+TEST edi, edi
+JNE 0x402ae2
+CALL esi
+MOV edi, eax
+TEST edi, edi
+JNE 0x402ae2
+XOR eax, eax
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
+CMP word ptr [edi], 0
+MOV esi, edi
+JE 0x402afc
+ADD esi, 2
+CMP word ptr [esi], 0
+JNE 0x402aea
+ADD esi, 2
+CMP word ptr [esi], 0
+JNE 0x402aea
+SUB esi, edi
+PUSH 0
+SAR esi, 1
+PUSH 0
+INC esi
+PUSH 0
+PUSH 0
+PUSH esi
+PUSH edi
+PUSH 0
+PUSH 0
+CALL dword ptr [0x40a138]
+MOV ebp, eax
+TEST ebp, ebp
+JE 0x402b5d
+PUSH ebp
+CALL 0x403a70
+ADD esp, 4
+MOV ebx, eax
+TEST ebx, ebx
+JE 0x402b5d
+PUSH 0
+PUSH 0
+PUSH ebp
+PUSH ebx
+PUSH esi
+PUSH edi
+PUSH 0
+PUSH 0
+CALL dword ptr [0x40a138]
+TEST eax, eax
+JNE 0x402b4c
+PUSH ebx
+CALL 0x403a00
+ADD esp, 4
+XOR ebx, ebx
+PUSH edi
+CALL dword ptr [0x40a130]
+MOV eax, ebx
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
+PUSH edi
+CALL dword ptr [0x40a130]
+XOR eax, eax
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
+CMP dword ptr [0x407154], 2
+JNE 0x402bf2
+TEST ebx, ebx
+JNE 0x402b91
+CALL dword ptr [0x40a12c]
+MOV ebx, eax
+TEST ebx, ebx
+JNE 0x402b91
+XOR eax, eax
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
+MOV ebp, ebx
+CMP byte ptr [ebx], 0
+JE 0x402ba6
+INC ebp
+CMP byte ptr [ebp], 0
+JNE 0x402b98
+INC ebp
+CMP byte ptr [ebp], 0
+JNE 0x402b98
+SUB ebp, ebx
+INC ebp
+PUSH ebp
+CALL 0x403a70
+MOV dword ptr [esp + 0x14], eax
+ADD esp, 4
+TEST eax, eax
+JNE 0x402bcb
+PUSH ebx
+CALL dword ptr [0x40a128]
+XOR eax, eax
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
+MOV edi, dword ptr [esp + 0x10]
+MOV esi, ebx
+MOV ecx, ebp
+SHR ecx, 2
+REP movsd dword ptr es:[edi], dword ptr [esi]
+MOV ecx, ebp
+PUSH ebx
+AND ecx, 3
+REP movsb byte ptr es:[edi], byte ptr [esi]
+CALL dword ptr [0x40a128]
+MOV eax, dword ptr [esp + 0x10]
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
+XOR eax, eax
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET

@@ -1,0 +1,29 @@
+Function: FUN_00403DF0
+Address: 0x00403DF0
+
+MOV ecx, 0x407510
+MOV edx, dword ptr [esp + 4]
+MOV eax, dword ptr [ecx + 0x810]
+TEST eax, eax
+JE 0x403e10
+CMP edx, eax
+JBE 0x403e10
+ADD eax, 0x400000
+CMP eax, edx
+JA 0x403e1d
+MOV ecx, dword ptr [ecx]
+CMP ecx, 0x407510
+JNE 0x403df9
+XOR eax, eax
+RET
+MOV eax, dword ptr [esp + 8]
+MOV dword ptr [eax], ecx
+MOV ecx, edx
+AND ecx, 0xfffff000
+MOV eax, dword ptr [esp + 0xc]
+SUB edx, ecx
+MOV dword ptr [eax], ecx
+SUB edx, 0x100
+SAR edx, 4
+LEA eax, [edx + ecx + 8]
+RET

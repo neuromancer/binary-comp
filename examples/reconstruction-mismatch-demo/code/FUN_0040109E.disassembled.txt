@@ -1,28 +1,28 @@
 Function: FUN_0040109E
 Address: 0x0040109E
 
-push ebp
-mov ebp, esp
-sub esp, 4
-push ebx
-push esi
-push edi
-mov dword ptr [ebp - 4], ecx
-mov eax, dword ptr [ebp - 4]
-mov ecx, dword ptr [ebp + 8]
-cmp dword ptr [eax], ecx
-jne 0x4010c2
-mov eax, 1
-jmp 0x4010e1
-mov eax, dword ptr [0x407038]
-cmp dword ptr [ebp + 8], eax
-jne 0x4010da
-mov eax, 1
-jmp 0x4010e1
-xor eax, eax
-jmp 0x4010e1
-pop edi
-pop esi
-pop ebx
-leave
-ret 4
+PUSH ebp
+MOV ebp, esp
+SUB esp, 4
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV dword ptr [ebp - 4], ecx
+MOV eax, dword ptr [ebp - 4]
+MOV ecx, dword ptr [ebp + 8]
+CMP dword ptr [eax], ecx
+JNE 0x4010c2
+MOV eax, 1
+JMP 0x4010e1
+MOV eax, dword ptr [0x407038]
+CMP dword ptr [ebp + 8], eax
+JNE 0x4010da
+MOV eax, 1
+JMP 0x4010e1
+XOR eax, eax
+JMP 0x4010e1
+POP edi
+POP esi
+POP ebx
+LEAVE
+RET 4

@@ -9,8 +9,8 @@ engineering projects:
 
 1. Keep the original executable as the reference.
 2. Rebuild C/C++ source with the matching compiler and linker.
-3. Use source annotations, linker maps, and optional Ghidra text exports to map
-   original functions and globals to rebuilt symbols.
+3. Use source annotations, linker maps, and optional Ghidra-style text exports
+   to map original functions and globals to rebuilt symbols.
 4. Compare layout, function bytes, decoded operands, global data, calls,
    global accesses, vtables, and C++ exception-handling metadata.
 
@@ -98,8 +98,9 @@ bytes.
 | Analyzer | Required target fields | Extra notes |
 | --- | --- | --- |
 | `exe` | `original_exe`, `rebuilt_exe`, `map`, `source_dirs` | `--functions` uses function annotations and the rebuilt MAP. `library_ranges` can exclude known CRT/library ranges. |
+| `export-asm` | `original_exe`, `code_export_dir` | Generates Ghidra-style `FUN_*.disassembled.txt` exports with Capstone. Source annotations and an original map are optional boundary inputs; existing Ghidra exports remain compatible. |
 | `compare` | `original_exe`, `rebuilt_exe`, `map`, `source_dirs` | Also takes one Ghidra-style `FUN_*.disassembled.txt` path. |
-| `report` | `original_exe`, `rebuilt_exe`, `map`, `source_dirs`, `code_export_dir` | Uses one export per annotated original address. |
+| `report` | `original_exe`, `rebuilt_exe`, `map`, `source_dirs`, `code_export_dir` | Uses one export per annotated original address. Generate them with `export-asm` or Ghidra. |
 | `values` | `original_exe`, `rebuilt_exe`, `map`, `source_dirs` | `code_export_dir` improves original function boundaries. Capstone is required. |
 | `data` | `original_exe`, `rebuilt_exe`, `map`, `globals_source` | Compares globals with encoded or commented original addresses. |
 | `globals` | `original_exe`, `globals_source` | Optional headers and `auto_complete` broaden coverage. |
@@ -112,6 +113,7 @@ bytes.
 
 ```bash
 binary-comp exe --config path/to/binary-comp.json --target full --functions
+binary-comp export-asm --config path/to/binary-comp.json --target full --clean
 binary-comp compare --config path/to/binary-comp.json --target full ScoreTable::score code/FUN_00401000.disassembled.txt
 binary-comp values --config path/to/binary-comp.json --target full --filter ScoreTable::score
 binary-comp data --config path/to/binary-comp.json --target full --verbose
@@ -126,6 +128,15 @@ binary-comp seh --config path/to/binary-comp.json --target full --report
 Most analyzers that read rebuilt code will run the configured build command
 first unless `--no-build` is supplied.
 
+`binary-comp export-asm` is a lightweight replacement for manual Ghidra
+disassembly exports when exact Ghidra recovery is not needed. It writes to
+`code_export_dir` using the same `FUN_XXXXXXXX.disassembled.txt` convention as
+Ghidra, so projects can mix generated and real Ghidra exports. If source
+`Function start` annotations or an original MSVC linker map are available, it
+uses those as boundaries. Without them, it falls back to a PE-aware discovery
+pass seeded from the entry point, direct calls/jumps, and common MSVC prologues;
+use `--discover` to merge discovered functions with annotated/map functions.
+
 ## Reconstruction Mismatch Demo
 
 [`examples/reconstruction-mismatch-demo`](examples/reconstruction-mismatch-demo)
@@ -136,7 +147,7 @@ contains a small, partially reconstructed C++ console program built with MSVC
 - Original and rebuilt C++ source files.
 - Real 32-bit PE executables compiled by MSVC 4.2.
 - MSVC linker maps and assembly listings.
-- Generated Ghidra-style `FUN_*.disassembled.txt` exports.
+- Capstone-generated Ghidra-style `FUN_*.disassembled.txt` exports.
 - A `binary-comp.json` target that runs the package against those artifacts.
 - A Makefile that downloads `wibo` and MSVC420 into a local `.tools/`
   directory; no submodules are required.
@@ -156,6 +167,10 @@ binary-comp data --config binary-comp.json --target demo
 binary-comp seh --config binary-comp.json --target demo --report --no-build
 ```
 
+`make build` invokes `binary-comp export-asm --config binary-comp.json --target demo --clean --no-source`,
+so the committed `code/FUN_*.disassembled.txt` files come from auto-discovery
+rather than Ghidra or an original linker map.
+
 The example intentionally includes discrepancies across four small reconstructed
 classes plus an original-only cleanup helper: function similarity differences,
 a focused single-function diff, an immediate-value mismatch, a global data
@@ -170,7 +185,7 @@ Small excerpts from the generated reports:
 
 === rebuilt.cpp ===
   Door::canOpen                                 0x40109E  80.00%
-  LessonLog::severity                           0x4010E8  54.35%
+  LessonLog::severity                           0x4010E8  52.94%
 ```
 
 ```text

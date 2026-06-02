@@ -1,0 +1,74 @@
+Function: FUN_004037B0
+Address: 0x004037B0
+
+PUSH ebx
+PUSH esi
+MOV esi, dword ptr [esp + 0x10]
+PUSH edi
+IMUL esi, dword ptr [esp + 0x10]
+PUSH ebp
+CMP esi, -0x20
+JA 0x4037d3
+TEST esi, esi
+JE 0x4037ce
+ADD esi, 0xf
+AND esi, 0xfffffff0
+JMP 0x4037d3
+MOV esi, 0x10
+MOV ebx, dword ptr [0x40a17c]
+XOR ebp, ebp
+CMP esi, -0x20
+JA 0x403833
+CMP esi, dword ptr [0x407d2c]
+JA 0x403822
+PUSH 9
+CALL 0x403890
+ADD esp, 4
+MOV eax, esi
+SHR eax, 4
+PUSH eax
+CALL 0x403ea0
+ADD esp, 4
+MOV ebp, eax
+PUSH 9
+CALL 0x403900
+ADD esp, 4
+TEST ebp, ebp
+JE 0x403826
+MOV edi, ebp
+XOR eax, eax
+MOV ecx, esi
+SHR ecx, 2
+REP stosd dword ptr es:[edi], eax
+MOV ecx, esi
+AND ecx, 3
+REP stosb byte ptr es:[edi], al
+TEST ebp, ebp
+JNE 0x403854
+PUSH esi
+MOV eax, dword ptr [0x4092c4]
+PUSH 8
+PUSH eax
+CALL ebx
+MOV ebp, eax
+TEST ebp, ebp
+JNE 0x403854
+CMP dword ptr [0x407d40], 0
+JE 0x403854
+PUSH esi
+CALL 0x404620
+ADD esp, 4
+TEST eax, eax
+JNE 0x4037d9
+XOR eax, eax
+POP ebp
+POP edi
+POP esi
+POP ebx
+RET
+MOV eax, ebp
+POP ebp
+POP edi
+POP esi
+POP ebx
+RET

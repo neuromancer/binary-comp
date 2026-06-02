@@ -1,0 +1,17 @@
+Function: FUN_004022B0
+Address: 0x004022B0
+
+MOV edx, dword ptr [esp + 8]
+PUSH esi
+MOV ecx, dword ptr [esp + 8]
+MOV eax, dword ptr [edx]
+ADD eax, ecx
+MOV esi, dword ptr [edx + 4]
+TEST esi, esi
+JL 0x4022cf
+MOV ecx, dword ptr [ecx + esi]
+MOV edx, dword ptr [edx + 8]
+ADD eax, dword ptr [ecx + edx]
+ADD eax, esi
+POP esi
+RET

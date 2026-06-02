@@ -1,0 +1,22 @@
+Function: FUN_00403100
+Address: 0x00403100
+
+PUSH 0
+PUSH 0x1000
+PUSH 0
+CALL dword ptr [0x40a160]
+MOV dword ptr [0x4092c4], eax
+TEST eax, eax
+JNE 0x40311b
+XOR eax, eax
+RET
+CALL 0x403b40
+TEST eax, eax
+JNE 0x403133
+MOV eax, dword ptr [0x4092c4]
+PUSH eax
+CALL dword ptr [0x40a15c]
+XOR eax, eax
+RET
+MOV eax, 1
+RET

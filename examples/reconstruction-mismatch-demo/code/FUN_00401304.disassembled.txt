@@ -1,0 +1,21 @@
+Function: FUN_00401304
+Address: 0x00401304
+
+PUSH ebp
+MOV ebp, esp
+PUSH ebx
+PUSH esi
+PUSH edi
+PUSH ebp
+PUSH 0
+PUSH 0
+PUSH 0x40131c
+PUSH dword ptr [ebp + 8]
+CALL 0x4055a2
+POP ebp
+POP edi
+POP esi
+POP ebx
+MOV esp, ebp
+POP ebp
+RET

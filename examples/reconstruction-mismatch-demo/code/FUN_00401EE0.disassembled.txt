@@ -1,0 +1,58 @@
+Function: FUN_00401EE0
+Address: 0x00401EE0
+
+MOV eax, dword ptr fs:[0]
+PUSH ebp
+MOV ebp, esp
+PUSH -1
+PUSH 0x406020
+PUSH 0x403144
+PUSH eax
+MOV dword ptr fs:[0], esp
+SUB esp, 0x20
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV ebx, dword ptr [ebp + 0x18]
+MOV esi, dword ptr [ebp + 0xc]
+MOV dword ptr [ebp - 0x18], esp
+MOV dword ptr [ebp - 0x1c], ebx
+LEA eax, [esi - 4]
+MOV dword ptr [ebp - 0x20], eax
+MOV ecx, dword ptr [eax]
+MOV dword ptr [ebp - 0x2c], ecx
+CALL 0x4023b0
+MOV ecx, dword ptr [eax + 0x6c]
+MOV dword ptr [ebp - 0x28], ecx
+CALL 0x4023b0
+MOV ecx, dword ptr [eax + 0x70]
+MOV dword ptr [ebp - 0x24], ecx
+CALL 0x4023b0
+MOV ecx, dword ptr [ebp + 8]
+MOV dword ptr [eax + 0x6c], ecx
+CALL 0x4023b0
+MOV ecx, dword ptr [ebp + 0x10]
+MOV dword ptr [eax + 0x70], ecx
+MOV dword ptr [ebp - 4], 1
+MOV eax, dword ptr [ebp + 0x20]
+PUSH eax
+MOV eax, dword ptr [ebp + 0x1c]
+PUSH eax
+PUSH ebx
+MOV eax, dword ptr [ebp + 0x14]
+PUSH eax
+PUSH esi
+CALL 0x401510
+ADD esp, 0x14
+MOV dword ptr [ebp - 0x1c], eax
+MOV dword ptr [ebp - 4], 0xffffffff
+CALL 0x401fad
+MOV eax, dword ptr [ebp - 0x1c]
+MOV ecx, dword ptr [ebp - 0x10]
+POP edi
+MOV dword ptr fs:[0], ecx
+POP esi
+POP ebx
+MOV esp, ebp
+POP ebp
+RET

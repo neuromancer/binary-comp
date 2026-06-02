@@ -1,0 +1,10 @@
+Function: FUN_00403A70
+Address: 0x00403A70
+
+MOV eax, dword ptr [0x407d40]
+MOV ecx, dword ptr [esp + 4]
+PUSH eax
+PUSH ecx
+CALL 0x403a90
+ADD esp, 8
+RET

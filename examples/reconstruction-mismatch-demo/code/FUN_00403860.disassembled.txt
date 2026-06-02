@@ -1,0 +1,19 @@
+Function: FUN_00403860
+Address: 0x00403860
+
+PUSH esi
+MOV eax, dword ptr [0x407474]
+PUSH eax
+MOV esi, dword ptr [0x40a180]
+CALL esi
+MOV ecx, dword ptr [0x407464]
+PUSH ecx
+CALL esi
+MOV eax, dword ptr [0x407454]
+PUSH eax
+CALL esi
+MOV eax, dword ptr [0x407434]
+PUSH eax
+CALL esi
+POP esi
+RET

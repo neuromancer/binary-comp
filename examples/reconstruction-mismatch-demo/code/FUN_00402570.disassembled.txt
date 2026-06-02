@@ -1,0 +1,19 @@
+Function: FUN_00402570
+Address: 0x00402570
+
+PUSH esi
+PUSH edi
+MOV edi, dword ptr [esp + 0x10]
+MOV esi, dword ptr [esp + 0xc]
+CMP edi, esi
+JBE 0x40258d
+MOV eax, dword ptr [esi]
+TEST eax, eax
+JE 0x402586
+CALL eax
+ADD esi, 4
+CMP edi, esi
+JA 0x40257e
+POP edi
+POP esi
+RET

@@ -1,0 +1,18 @@
+Function: FUN_00401400
+Address: 0x00401400
+
+PUSH ebp
+MOV eax, dword ptr [esp + 0xc]
+MOV ebp, esp
+ADD eax, 0xc
+SUB esp, 4
+MOV dword ptr [ebp - 4], eax
+PUSH ebx
+MOV ebx, dword ptr fs:[0]
+MOV eax, dword ptr [ebx]
+MOV dword ptr fs:[0], eax
+MOV eax, dword ptr [ebp + 8]
+MOV ebx, dword ptr [ebp + 0xc]
+MOV esp, dword ptr [ebx - 4]
+MOV ebp, dword ptr [ebp - 4]
+JMP eax

@@ -1,0 +1,85 @@
+Function: FUN_00402710
+Address: 0x00402710
+
+SUB esp, 4
+MOV edx, dword ptr [0x40705c]
+PUSH ebx
+PUSH esi
+PUSH edi
+XOR esi, esi
+PUSH ebp
+CMP byte ptr [edx], 0
+JE 0x40273e
+CMP byte ptr [edx], 0x3d
+JE 0x40272a
+INC esi
+MOV edi, edx
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+ADD edx, ecx
+CMP byte ptr [edx], 0
+JNE 0x402724
+LEA eax, [esi*4 + 4]
+PUSH eax
+CALL 0x403a70
+MOV dword ptr [0x4070a4], eax
+ADD esp, 4
+MOV ebx, eax
+TEST ebx, ebx
+JNE 0x402763
+PUSH 9
+CALL 0x401840
+ADD esp, 4
+MOV ebp, dword ptr [0x40705c]
+MOV eax, ebp
+CMP byte ptr [ebp], 0
+JE 0x4027cf
+MOV edi, ebp
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+MOV dword ptr [esp + 0x10], ecx
+CMP byte ptr [ebp], 0x3d
+JE 0x4027c5
+PUSH ecx
+CALL 0x403a70
+ADD esp, 4
+MOV dword ptr [ebx], eax
+TEST eax, eax
+JNE 0x4027a1
+PUSH 9
+CALL 0x401840
+ADD esp, 4
+MOV edi, ebp
+MOV ecx, 0xffffffff
+SUB eax, eax
+REPNE scasb al, byte ptr es:[edi]
+NOT ecx
+SUB edi, ecx
+MOV eax, ecx
+SHR ecx, 2
+MOV esi, edi
+MOV edi, dword ptr [ebx]
+ADD ebx, 4
+REP movsd dword ptr es:[edi], dword ptr [esi]
+MOV ecx, eax
+AND ecx, 3
+REP movsb byte ptr es:[edi], byte ptr [esi]
+ADD ebp, dword ptr [esp + 0x10]
+CMP byte ptr [ebp], 0
+JNE 0x402771
+MOV eax, dword ptr [0x40705c]
+PUSH eax
+CALL 0x403a00
+MOV dword ptr [0x40705c], 0
+ADD esp, 4
+MOV dword ptr [ebx], 0
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET

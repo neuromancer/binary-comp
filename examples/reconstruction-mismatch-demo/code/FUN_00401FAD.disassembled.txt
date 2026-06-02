@@ -1,0 +1,28 @@
+Function: FUN_00401FAD
+Address: 0x00401FAD
+
+MOV eax, dword ptr [ebp - 0x2c]
+MOV ecx, dword ptr [ebp - 0x20]
+MOV dword ptr [ecx], eax
+CALL 0x4023b0
+MOV ecx, dword ptr [ebp - 0x28]
+MOV dword ptr [eax + 0x6c], ecx
+CALL 0x4023b0
+MOV ecx, dword ptr [ebp - 0x24]
+MOV dword ptr [eax + 0x70], ecx
+MOV eax, dword ptr [ebp + 8]
+CMP dword ptr [eax], 0xe06d7363
+JNE 0x401ffd
+CMP dword ptr [eax + 0x10], 3
+JNE 0x401ffd
+CMP dword ptr [eax + 0x14], 0x19930520
+JNE 0x401ffd
+CMP dword ptr [ebp - 0x1c], 0
+JE 0x401ffd
+CALL 0x4013ae
+PUSH eax
+MOV eax, dword ptr [ebp + 8]
+PUSH eax
+CALL 0x402230
+ADD esp, 8
+RET

@@ -1,0 +1,42 @@
+Function: FUN_004023B0
+Address: 0x004023B0
+
+PUSH esi
+PUSH edi
+CALL dword ptr [0x40a110]
+MOV esi, eax
+MOV eax, dword ptr [0x407080]
+PUSH eax
+CALL dword ptr [0x40a10c]
+MOV edi, eax
+TEST edi, edi
+JNE 0x402413
+PUSH 0x74
+PUSH 1
+CALL 0x4037b0
+ADD esp, 8
+MOV edi, eax
+TEST edi, edi
+JE 0x402409
+PUSH edi
+MOV eax, dword ptr [0x407080]
+PUSH eax
+CALL dword ptr [0x40a100]
+TEST eax, eax
+JE 0x402409
+PUSH edi
+CALL 0x402390
+ADD esp, 4
+CALL dword ptr [0x40a0fc]
+MOV dword ptr [edi], eax
+MOV dword ptr [edi + 4], 0xffffffff
+JMP 0x402413
+PUSH 0x10
+CALL 0x401840
+ADD esp, 4
+PUSH esi
+CALL dword ptr [0x40a108]
+MOV eax, edi
+POP edi
+POP esi
+RET

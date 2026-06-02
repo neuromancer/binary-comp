@@ -1,0 +1,35 @@
+Function: FUN_00403A90
+Address: 0x00403A90
+
+PUSH esi
+PUSH edi
+MOV esi, dword ptr [esp + 0xc]
+CMP esi, -0x20
+JBE 0x403aa0
+XOR eax, eax
+POP edi
+POP esi
+RET
+TEST esi, esi
+JNE 0x403aa9
+MOV esi, 1
+MOV edi, dword ptr [esp + 0x10]
+MOV eax, 0
+CMP esi, -0x20
+JA 0x403ac0
+PUSH esi
+CALL 0x403ae0
+ADD esp, 4
+TEST eax, eax
+JNE 0x403ad7
+TEST edi, edi
+JE 0x403ad7
+PUSH esi
+CALL 0x404620
+ADD esp, 4
+TEST eax, eax
+JNE 0x403aad
+XOR eax, eax
+POP edi
+POP esi
+RET

@@ -1,0 +1,20 @@
+Function: FUN_00402E80
+Address: 0x00402E80
+
+MOV eax, dword ptr [esp + 4]
+SUB eax, 0x3a4
+CMP eax, 0x12
+JA 0x402e9d
+XOR ecx, ecx
+MOV cl, byte ptr [eax + 0x402ecc]
+JMP dword ptr [ecx*4 + 0x402eb8]
+XOR eax, eax
+RET
+MOV eax, 0x411
+RET
+MOV eax, 0x804
+RET
+MOV eax, 0x412
+RET
+MOV eax, 0x404
+RET

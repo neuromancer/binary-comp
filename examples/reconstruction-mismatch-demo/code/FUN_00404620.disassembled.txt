@@ -1,0 +1,25 @@
+Function: FUN_00404620
+Address: 0x00404620
+
+PUSH 9
+CALL 0x403890
+ADD esp, 4
+MOV eax, dword ptr [0x4082b0]
+TEST eax, eax
+JE 0x404651
+MOV ecx, dword ptr [esp + 4]
+PUSH ecx
+CALL eax
+ADD esp, 4
+TEST eax, eax
+JE 0x404651
+PUSH 9
+CALL 0x403900
+ADD esp, 4
+MOV eax, 1
+RET
+PUSH 9
+CALL 0x403900
+ADD esp, 4
+XOR eax, eax
+RET

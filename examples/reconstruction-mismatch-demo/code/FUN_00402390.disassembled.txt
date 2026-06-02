@@ -1,0 +1,7 @@
+Function: FUN_00402390
+Address: 0x00402390
+
+MOV eax, dword ptr [esp + 4]
+MOV dword ptr [eax + 0x50], 0x4070c8
+MOV dword ptr [eax + 0x14], 1
+RET

@@ -1,0 +1,157 @@
+Function: FUN_00402F20
+Address: 0x00402F20
+
+SUB esp, 0x44
+PUSH ebx
+PUSH esi
+PUSH edi
+PUSH ebp
+PUSH 0x480
+CALL 0x403a70
+ADD esp, 4
+MOV esi, eax
+TEST esi, esi
+JNE 0x402f44
+PUSH 0x1b
+CALL 0x401840
+ADD esp, 4
+LEA eax, [esi + 0x480]
+MOV dword ptr [0x4092d0], esi
+MOV dword ptr [0x4093d0], 0x20
+CMP eax, esi
+JBE 0x402f86
+XOR ecx, ecx
+MOV edx, 0xa
+MOV byte ptr [esi + 4], cl
+ADD esi, 0x24
+MOV dword ptr [esi - 0x24], 0xffffffff
+MOV byte ptr [esi - 0x1f], dl
+MOV dword ptr [esi - 0x1c], ecx
+MOV eax, dword ptr [0x4092d0]
+ADD eax, 0x480
+CMP eax, esi
+JA 0x402f65
+LEA eax, [esp + 0x10]
+PUSH eax
+CALL dword ptr [0x40a154]
+CMP word ptr [esp + 0x42], 0
+JE 0x403077
+CMP dword ptr [esp + 0x44], 0
+JE 0x403077
+MOV eax, dword ptr [esp + 0x44]
+MOV ebp, dword ptr [eax]
+LEA ebx, [eax + 4]
+CMP ebp, 0x800
+LEA esi, [ebp + ebx]
+JL 0x402fc2
+MOV ebp, 0x800
+CMP dword ptr [0x4093d0], ebp
+JGE 0x403028
+MOV edi, 0x4092d4
+PUSH 0x480
+CALL 0x403a70
+ADD esp, 4
+TEST eax, eax
+JE 0x403022
+LEA ecx, [eax + 0x480]
+MOV dword ptr [edi], eax
+ADD dword ptr [0x4093d0], 0x20
+CMP ecx, eax
+JBE 0x403015
+XOR ecx, ecx
+MOV byte ptr [eax + 4], cl
+ADD eax, 0x24
+MOV dword ptr [eax - 0x24], 0xffffffff
+MOV byte ptr [eax - 0x1f], 0xa
+MOV dword ptr [eax - 0x1c], ecx
+MOV edx, dword ptr [edi]
+ADD edx, 0x480
+CMP edx, eax
+JA 0x402ff5
+ADD edi, 4
+CMP dword ptr [0x4093d0], ebp
+JL 0x402fcf
+JMP 0x403028
+MOV ebp, dword ptr [0x4093d0]
+XOR edi, edi
+TEST ebp, ebp
+JLE 0x403077
+MOV ecx, dword ptr [esi]
+CMP ecx, -1
+JE 0x40306e
+MOV al, byte ptr [ebx]
+TEST al, 1
+JE 0x40306e
+TEST al, 8
+JNE 0x40304a
+PUSH ecx
+CALL dword ptr [0x40a14c]
+TEST eax, eax
+JE 0x40306e
+MOV eax, edi
+MOV ecx, edi
+AND eax, 0xffffffe7
+AND ecx, 0x1f
+SAR eax, 3
+SHL ecx, 2
+MOV edx, dword ptr [eax + 0x4092d0]
+MOV eax, dword ptr [esi]
+LEA ecx, [ecx + ecx*8]
+ADD ecx, edx
+MOV dword ptr [ecx], eax
+MOV dl, byte ptr [ebx]
+MOV byte ptr [ecx + 4], dl
+INC edi
+INC ebx
+ADD esi, 4
+CMP edi, ebp
+JL 0x40302e
+XOR esi, esi
+XOR edi, edi
+MOV ebx, dword ptr [0x4092d0]
+ADD ebx, esi
+CMP dword ptr [ebx], -1
+JNE 0x4030df
+MOV eax, 0xfffffff6
+TEST esi, esi
+MOV byte ptr [ebx + 4], 0x81
+JE 0x4030a3
+LEA eax, [edi - 1]
+CMP eax, 1
+MOV eax, 0xfffffff5
+ADC eax, -1
+PUSH eax
+CALL dword ptr [0x40a0f0]
+CMP eax, -1
+MOV ebp, eax
+JE 0x4030d9
+PUSH ebp
+CALL dword ptr [0x40a14c]
+TEST eax, eax
+JE 0x4030d9
+AND eax, 0xff
+MOV dword ptr [ebx], ebp
+CMP eax, 2
+JNE 0x4030ce
+OR byte ptr [ebx + 4], 0x40
+JMP 0x4030e3
+CMP eax, 3
+JNE 0x4030e3
+OR byte ptr [ebx + 4], 8
+JMP 0x4030e3
+OR byte ptr [ebx + 4], 0x40
+JMP 0x4030e3
+OR byte ptr [ebx + 4], 0x80
+ADD esi, 0x24
+INC edi
+CMP esi, 0x6c
+JL 0x40307b
+MOV eax, dword ptr [0x4093d0]
+PUSH eax
+CALL dword ptr [0x40a148]
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 0x44
+RET

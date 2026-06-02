@@ -1,0 +1,29 @@
+Function: FUN_00401510
+Address: 0x00401510
+
+MOV eax, dword ptr [esp + 8]
+MOV ecx, dword ptr [esp + 4]
+SUB esp, 0x14
+MOV dword ptr [esp + 8], eax
+MOV dword ptr [esp + 0xc], ecx
+MOV dword ptr [esp], 0
+MOV dword ptr [esp + 4], 0x401580
+MOV eax, dword ptr [esp + 0x24]
+INC eax
+MOV dword ptr [esp + 0x10], eax
+MOV eax, dword ptr fs:[0]
+MOV dword ptr [esp], eax
+LEA eax, [esp]
+MOV dword ptr fs:[0], eax
+MOV eax, dword ptr [esp + 0x28]
+PUSH eax
+PUSH ecx
+MOV ecx, dword ptr [esp + 0x28]
+PUSH ecx
+CALL 0x4022e0
+MOV ecx, eax
+MOV eax, dword ptr [esp]
+MOV dword ptr fs:[0], eax
+MOV eax, ecx
+ADD esp, 0x14
+RET

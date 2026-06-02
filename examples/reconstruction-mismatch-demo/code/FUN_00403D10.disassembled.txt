@@ -1,0 +1,70 @@
+Function: FUN_00403D10
+Address: 0x00403D10
+
+SUB esp, 4
+PUSH ebx
+PUSH esi
+PUSH edi
+MOV esi, dword ptr [0x407514]
+PUSH ebp
+CMP dword ptr [esi + 0x810], 0
+JE 0x403dcc
+MOV ebp, 0x3ff
+LEA ebx, [esi + 0x40f]
+MOV dword ptr [esp + 0x10], 0
+MOV edi, 0x3ff000
+CMP byte ptr [ebx], 0xf0
+JNE 0x403d86
+PUSH 0x4000
+MOV eax, dword ptr [esi + 0x810]
+PUSH 0x1000
+ADD eax, edi
+PUSH eax
+CALL dword ptr [0x40a164]
+TEST eax, eax
+JE 0x403d86
+MOV byte ptr [ebx], 0xff
+DEC dword ptr [0x407d28]
+MOV eax, dword ptr [esi + 0xc]
+CMP eax, -1
+JE 0x403d79
+CMP ebp, eax
+JGE 0x403d7c
+MOV dword ptr [esi + 0xc], ebp
+INC dword ptr [esp + 0x10]
+DEC dword ptr [esp + 0x18]
+JE 0x403d92
+SUB edi, 0x1000
+DEC ebp
+DEC ebx
+TEST edi, edi
+JGE 0x403d42
+CMP dword ptr [esp + 0x10], 0
+MOV eax, esi
+MOV esi, dword ptr [esi + 4]
+JE 0x403dcc
+CMP byte ptr [eax + 0x10], 0xff
+JNE 0x403dcc
+MOV edx, 1
+LEA ecx, [eax + 0x11]
+CMP byte ptr [ecx], 0xff
+JNE 0x403dbb
+INC edx
+INC ecx
+CMP edx, 0x400
+JL 0x403dac
+CMP edx, 0x400
+JNE 0x403dcc
+PUSH eax
+CALL 0x403cb0
+ADD esp, 4
+CMP esi, dword ptr [0x407514]
+JE 0x403ddf
+CMP dword ptr [esp + 0x18], 0
+JG 0x403d1d
+POP ebp
+POP edi
+POP esi
+POP ebx
+ADD esp, 4
+RET
