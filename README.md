@@ -4,8 +4,10 @@ Standalone binary comparison and verification tools for C/C++ reimplementation
 projects. The package is extracted from project-specific scripts into reusable
 library modules plus a CLI.
 
-It is used by this source-code reconstruction and two additional undisclosed
-reconstruction projects.
+It is used by the
+[`my-teacher-is-an-alien-re`](https://github.com/neuromancer/my-teacher-is-an-alien-re)
+source-code reconstruction and by two additional undisclosed reconstruction
+projects.
 
 The goal is to reduce the cost of bugs found near the end of source-code
 reconstruction, when most functions are close to 100% matching but the remaining
@@ -257,6 +259,59 @@ Ghidra, so projects can mix generated and real Ghidra exports. If source
 uses those as boundaries. Without them, it falls back to a PE-aware discovery
 pass seeded from the entry point, direct calls/jumps, and common MSVC prologues;
 use `--discover` to merge discovered functions with annotated/map functions.
+
+### Ghidra Export Script
+
+Use `binary-comp export-asm` for fast Capstone-based exports. Use the companion
+Ghidra script when a project needs Ghidra's exact function recovery, including
+manually created function boundaries and labels:
+[`ghidra_scripts/ExportToCompile.java`](ghidra_scripts/ExportToCompile.java).
+
+From the Ghidra UI:
+
+1. Open the original executable in Ghidra.
+2. Run analysis and verify the functions you care about exist in the listing.
+3. Open `Window -> Script Manager`.
+4. Add this checkout's `ghidra_scripts/` directory to the script directories,
+   or copy `ExportToCompile.java` into `~/ghidra_scripts/`.
+5. Run `ExportToCompile` and choose the target's configured `code_export_dir`
+   when prompted.
+
+The script writes:
+
+```text
+FUN_XXXXXXXX.disassembled.txt  # Ghidra-style assembly consumed by compare/report/calls
+FUN_XXXXXXXX.decompiled.txt    # optional decompiler text used by call checks
+globals.h                      # conservative global inventory helper
+strings.txt                    # string inventory helper
+```
+
+The exported directory can then be used directly by the normal commands:
+
+```bash
+binary-comp compare --config path/to/binary-comp.json --target full ScoreTable::score code/FUN_00401000.disassembled.txt
+binary-comp report --config path/to/binary-comp.json --target full
+binary-comp calls --config path/to/binary-comp.json --target full
+```
+
+For automation, pass the export directory as the first script argument. This
+avoids the UI directory chooser. For example, with Ghidra MCP script execution
+enabled:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8089/run_ghidra_script \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "script_name": "/path/to/binary-comp/ghidra_scripts/ExportToCompile.java",
+    "args": "/path/to/code_export_dir",
+    "program": "original.exe",
+    "timeout_seconds": 120,
+    "capture_output": true
+  }'
+```
+
+Direct calls are normalized to absolute targets, so `binary-comp calls` sees
+Ghidra exports and `binary-comp export-asm` output consistently.
 
 ## Development
 
