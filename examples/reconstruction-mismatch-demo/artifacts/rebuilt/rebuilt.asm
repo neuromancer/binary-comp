@@ -176,11 +176,12 @@ _severity$ = -4
 	add	eax, DWORD PTR _channel$[ebp]
 	mov	DWORD PTR _severity$[ebp], eax
 ; Line 75
-	movsx	eax, BYTE PTR ?g_Title_00407030@@3PADA	; g_Title_00407030
-	cmp	eax, 65					; 00000041H
+	movsx	eax, BYTE PTR ?g_Title_00407030@@3PADA+1 ; g_Title_00407030
+	cmp	eax, 76					; 0000004cH
 	jne	$L223
 ; Line 76
 	mov	eax, DWORD PTR _channel$[ebp]
+	dec	eax
 	and	eax, 1
 	mov	eax, DWORD PTR ?g_Rotor_00407040@@3PAHA[eax*4]
 	add	DWORD PTR _severity$[ebp], eax

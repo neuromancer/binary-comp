@@ -78,6 +78,7 @@ demo: build
 	$(BINARY_COMP) compare --config binary-comp.json --target demo --no-build LessonLog::severity code/FUN_004010E8.disassembled.txt
 	$(BINARY_COMP) values --config binary-comp.json --target demo --no-build --include-stack-locals
 	$(BINARY_COMP) data --config binary-comp.json --target demo || true
+	$(BINARY_COMP) globals --config binary-comp.json --target demo --fail-on-issues || true
 	$(BINARY_COMP) seh --config binary-comp.json --target demo --report --no-build || true
 
 clean:

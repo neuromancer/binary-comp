@@ -1,6 +1,6 @@
  rebuilt
 
- Timestamp is 6a1e9316 (Tue Jun 02 10:23:50 2026)
+ Timestamp is 6a1ef5de (Tue Jun 02 17:25:18 2026)
 
  Preferred load address is 00400000
 
@@ -32,8 +32,8 @@
  0001:00000038       ?tick@Reactor@@QAEHH@Z     00401038 f rebuilt.obj
  0001:00000076       ?canOpen@Door@@QBEHH@Z     00401076 f rebuilt.obj
  0001:000000a8       ?severity@LessonLog@@QBEHH@Z 004010a8 f rebuilt.obj
- 0001:000000ee       ?boundary_after_reconstructed@@YAHH@Z 004010ee f rebuilt.obj
- 0001:00000102       _main                      00401102 f rebuilt.obj
+ 0001:000000ef       ?boundary_after_reconstructed@@YAHH@Z 004010ef f rebuilt.obj
+ 0001:00000103       _main                      00401103 f rebuilt.obj
  0001:00000180       ??0ScoreTable@@QAE@H@Z     00401180 f rebuilt.obj
  0001:000001b0       ??0Reactor@@QAE@H@Z        004011b0 f rebuilt.obj
  0001:000001e0       ??0Door@@QAE@H@Z           004011e0 f rebuilt.obj
@@ -275,6 +275,6 @@ FIXUPS: 23ad 18 e3 bd fffffdaa d 11 2f 25 ffffff0b fffffef6 1d 20 62 20
 FIXUPS: 225c fffffd51 1555 2e 1d 19 1f 1c fffffdfd 2e 2b 23 ffffff39 21
 FIXUPS: 3384 ffffff0e 1f 13 6d e fffff8a6 c9 67 58 54 fffffb2a e c 3d fffffeaa
 FIXUPS: 2829 11 2d e 11aa d 20 d fffffce7 13 b d b 7c f6 b 20 42 b fffffd33
-FIXUPS: 36aa 1f c c e fffffef0 9 b 20 b c 1b fffffdf2 1d 4b 44 ffffdc2e
-FIXUPS: 111b d a a c c c 9 2b9f d 3d fffffe92 b 50 b 41 1d fffffe2a 2b
+FIXUPS: 36aa 1f c c e fffffef0 9 b 20 b c 1b fffffdf2 1d 4b 44 ffffdc2f
+FIXUPS: 111c d a a c c c 9 2b9e d 3d fffffe92 b 50 b 41 1d fffffe2a 2b
 FIXUPS: 3b0a 20 d 1a 10 ffffff44 ffffff1b 9 b d b 27

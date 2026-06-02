@@ -4,6 +4,17 @@ Standalone binary comparison and verification tools for C/C++ reimplementation
 projects. The package is extracted from project-specific scripts into reusable
 library modules plus a CLI.
 
+It is used by this source-code reconstruction and two additional undisclosed
+reconstruction projects.
+
+The goal is to reduce the cost of bugs found near the end of source-code
+reconstruction, when most functions are close to 100% matching but the remaining
+differences are small, hard to localize, and still expected to be matchable.
+
+Platform scope: `binary-comp` is currently optimized for MSVC-built 32-bit PE
+reconstruction projects, with some analyzers reusable elsewhere when equivalent
+address mappings are available.
+
 `binary-comp` is built around the workflow used by many MSVC-era reverse
 engineering projects:
 
@@ -14,14 +25,115 @@ engineering projects:
 4. Compare layout, function bytes, decoded operands, global data, calls,
    global accesses, vtables, and C++ exception-handling metadata.
 
-## Platform Scope
+## Reconstruction Mismatch Demo
 
-`binary-comp` is currently optimized for MSVC-built 32-bit PE reconstruction
-projects. Some analyzers are reusable for other binaries when equivalent
-address mappings are available, but several important pieces assume MSVC-era
-conventions: linker maps and symbol names, PE image layout, x86 disassembly,
-common MSVC function prologues, and MSVC C++ exception metadata such as
-`FuncInfo` and `__CxxFrameHandler`.
+[`examples/reconstruction-mismatch-demo`](examples/reconstruction-mismatch-demo)
+is a small end-to-end MSVC 4.2 C++ reconstruction with real 32-bit PE
+executables, four reconstructed classes, an intentional global mismatch, and an
+original-only C++ EH cleanup path.
+
+The Makefile downloads `wibo`, MSVC420, and the `msvcrt40.dll` copy required by
+`wibo`; no submodules or Ghidra export step are needed. `make build` compiles
+both executables and runs `binary-comp export-asm --clean --no-source`, so the
+local `code/FUN_*.disassembled.txt` files are regenerated from auto-discovery.
+
+```bash
+cd examples/reconstruction-mismatch-demo
+make demo
+```
+
+Small excerpts from the generated reports:
+
+The similarity score compares instruction kinds and control-flow shape; it does
+not decide whether operands such as constants, stack offsets, or referenced
+addresses are correct.
+
+```text
+--- Similarity Report ---
+
+=== rebuilt.cpp ===
+  Door::canOpen                                 0x40109E  80.00%
+  LessonLog::severity                           0x4010E8  50.00%
+```
+
+The assembly diff below prints reconstructed code on the left and original code
+on the right. It comes from this source-level mismatch:
+
+```cpp
+// Reconstructed
+int LessonLog::severity(int channel) const
+{
+    int severity = base_ + channel;
+    if (g_Title_00407030[1] == 'L') {
+        severity += g_Rotor_00407040[(channel + 1) & 1];
+    }
+    return severity;
+}
+
+// Original
+int LessonLog::severity(int channel) const
+{
+    int severity = base_ + channel;
+    CleanupProbe probe(&severity);
+    if (g_Title_00407030[0] == 'A') {
+        severity += g_Rotor_00407040[channel & 1];
+    }
+    return severity;
+}
+```
+
+```text
+Comparison for function 'LessonLog::severity':
+004010AB: sub esp, 8                            | 004010EB: push -1
+004010AE: push ebx                              | 004010ED: push 0x40116a
+004010AF: push esi                              | 004010F2: mov eax, dword ptr fs:[0]
+004010B0: push edi                              | 004010F8: push eax
+004010B1: mov dword ptr [ebp - 8], ecx          | 004010F9: mov dword ptr fs:[0], esp
+004010B4: mov eax, dword ptr [ebp - 8]          | 00401100: sub esp, 0x10
+...
+004010BF: movsx eax, byte ptr [0x405031]        | 00401106: mov dword ptr [ebp - 0x1c], ecx
+004010C6: cmp eax, 0x4c                         | 00401109: mov eax, dword ptr [ebp - 0x1c]
+004010D2: dec eax                               | 00401111: mov dword ptr [ebp - 0x14], eax
+004010D6: mov eax, dword ptr [eax*4 + 0x405040] | 00401117: push eax
+                                                | ...
+                                                | 00401154: call 0x401161
+
+Similarity: 50.00%
+```
+
+The values analyzer is the follow-up pass for those incorrect operands. Here it
+reduces the noisy assembly diff to the changed immediate that came from the
+reconstructed `'L'` check versus the original `'A'` check:
+
+```text
+LessonLog::severity (orig 0x4010E8, rebuilt 0x4010A8, 58.8%) - 4 mismatch(es):
+    IMM 76 vs 65: 0x004010C6 cmp eax, 0x4c  |  0x0040112E cmp eax, 0x41
+```
+
+The SEH analyzer explains the extra frame setup and cleanup call on the original
+side:
+
+```text
+LessonLog::severity  (0x4010E8)
+    WARNING: rebuilt has NO C++ EH frame, original unwinds 1 state(s) ['stack@ebp-0x10']
+```
+
+The demo also runs the global detector as a separate project-level check:
+
+```text
+Global initialization/layout audit
+  definitions:  4
+  issues:       1
+  auto-complete global side effects: 3 (0 reviewed, 3 unreviewed)
+
+INIT_MISMATCH                   0x00407038 g_Bonus_00407038:2 size=4
+  original: 07 00 00 00  ?...
+  source:   09 00 00 00  ?...
+
+Auto-complete global side effects (unreviewed)
+UNREVIEWED 0x00403460
+  note: CRT initializer table 0x00407000..0x00407008
+```
 
 ## Install
 
@@ -145,92 +257,6 @@ Ghidra, so projects can mix generated and real Ghidra exports. If source
 uses those as boundaries. Without them, it falls back to a PE-aware discovery
 pass seeded from the entry point, direct calls/jumps, and common MSVC prologues;
 use `--discover` to merge discovered functions with annotated/map functions.
-
-## Reconstruction Mismatch Demo
-
-[`examples/reconstruction-mismatch-demo`](examples/reconstruction-mismatch-demo)
-contains a small, partially reconstructed C++ console program built with MSVC
-4.x. It is designed to show the analyzers on a non-perfect rebuild, not just a
-100% match. It includes:
-
-- Original and rebuilt C++ source files.
-- Real 32-bit PE executables compiled by MSVC 4.2.
-- MSVC linker maps and assembly listings.
-- A Makefile step that generates Capstone-based Ghidra-style
-  `FUN_*.disassembled.txt` exports.
-- A `binary-comp.json` target that runs the package against those artifacts.
-- A Makefile that downloads `wibo` and MSVC420 into a local `.tools/`
-  directory; no submodules are required.
-- A Makefile step that replaces `MSVC420/bin/msvcrt40.dll` with the known-good
-  DLL required by `wibo` before compiling.
-
-From the example directory:
-
-```bash
-make setup
-make build
-binary-comp exe --config binary-comp.json --target demo --functions
-binary-comp report --config binary-comp.json --target demo --no-build
-binary-comp compare --config binary-comp.json --target demo --no-build LessonLog::severity code/FUN_004010E8.disassembled.txt
-binary-comp values --config binary-comp.json --target demo --no-build --include-stack-locals
-binary-comp data --config binary-comp.json --target demo
-binary-comp seh --config binary-comp.json --target demo --report --no-build
-```
-
-`make build` invokes `binary-comp export-asm --config binary-comp.json --target demo --clean --no-source`,
-so the local `code/FUN_*.disassembled.txt` files are regenerated from
-auto-discovery rather than committed Ghidra exports or an original linker map.
-
-The example intentionally includes discrepancies across four small reconstructed
-classes plus an original-only cleanup helper: function similarity differences,
-a focused single-function diff, an immediate-value mismatch, a global data
-mismatch, shifted function addresses, and an original-only C++ EH frame.
-`binary-comp data` and `binary-comp seh --report` exit nonzero in this example
-because they find the expected mismatches.
-
-Small excerpts from the generated reports:
-
-```text
---- Similarity Report ---
-
-=== rebuilt.cpp ===
-  Door::canOpen                                 0x40109E  80.00%
-  LessonLog::severity                           0x4010E8  52.94%
-```
-
-```text
-Comparison for function 'LessonLog::severity':
-004010AB: sub esp, 8                            | 004010EB: push -1
-004010AE: push ebx                              | 004010ED: push 0x40116a
-004010AF: push esi                              | 004010F2: mov eax, dword ptr fs:[0]
-004010B0: push edi                              | 004010F8: push eax
-004010B1: mov dword ptr [ebp - 8], ecx          | 004010F9: mov dword ptr fs:[0], esp
-004010B4: mov eax, dword ptr [ebp - 8]          | 00401100: sub esp, 0x10
-...
-004010DF: mov eax, dword ptr [ebp - 4]          | 00401118: lea ecx, [ebp - 0x10]
-004010E2: jmp 0x4010e7                          | 0040111B: call 0x401220
-004010E7: pop edi                               | 00401120: mov dword ptr [ebp - 4], 0
-004010E8: pop esi                               | 00401127: movsx eax, byte ptr [0x407030]
-004010E9: pop ebx                               | 0040112E: cmp eax, 0x41
-004010EA: leave                                 | 00401131: jne 0x401147
-004010EB: ret 4                                 | 00401137: mov eax, dword ptr [ebp + 8]
-                                                | 0040113A: and eax, 1
-                                                | ...
-                                                | 00401154: call 0x401161
-
-Similarity: 52.94%
-```
-
-```text
-0x00407038   0x00405038     g_Bonus_00407038             MISMATCH   init: 9
-             Original value: 0x00000007 (7)
-             Rebuilt value:  0x00000009 (9)
-```
-
-```text
-LessonLog::severity  (0x4010E8)
-    WARNING: rebuilt has NO C++ EH frame, original unwinds 1 state(s) ['stack@ebp-0x10']
-```
 
 ## Development
 

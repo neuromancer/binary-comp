@@ -1,0 +1,2 @@
+examples/reconstruction-mismatch-demo/artifacts/**/*.asm -whitespace
+examples/reconstruction-mismatch-demo/artifacts/**/*.map -whitespace

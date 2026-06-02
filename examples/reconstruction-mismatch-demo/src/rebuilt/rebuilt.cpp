@@ -72,8 +72,8 @@ int Door::canOpen(int passcode) const
 int LessonLog::severity(int channel) const
 {
     int severity = base_ + channel;
-    if (g_Title_00407030[0] == 'A') {
-        severity += g_Rotor_00407040[channel & 1];
+    if (g_Title_00407030[1] == 'L') {
+        severity += g_Rotor_00407040[(channel + 1) & 1];
     }
     return severity;
 }
