@@ -109,7 +109,7 @@ Selected 0 source target(s), 0 map target(s), 92 discovered target(s); 92 bounda
 5. Drill into one mismatching function:
 
    ```bash
-   binary-comp compare --config binary-comp.json --target demo --no-build Door::canOpen code/FUN_0040109E.disassembled.txt
+   binary-comp compare --config binary-comp.json --target demo --no-build LessonLog::severity code/FUN_004010E8.disassembled.txt
    ```
 
 6. Check operand value, global data, and SEH differences:
@@ -131,8 +131,8 @@ Expected discrepancies include:
 - `report`: `Door::canOpen` is below 90% similarity because the rebuilt method
   is missing one passcode branch. `LessonLog::severity` is also below 90%
   because the original has a local object cleanup path.
-- `compare`: the single-function diff for `Door::canOpen` shows the missing
-  `g_Bonus_00407038` branch in context.
+- `compare`: the single-function diff for `LessonLog::severity` shows the
+  original-only SEH setup and cleanup path in context.
 - `values --include-stack-locals`: `ScoreTable::score` compares `12` against
   the original `10` threshold. It also shows the stack-offset differences caused
   by the EH frame in `LessonLog::severity`.
@@ -157,14 +157,36 @@ Small excerpts from the expected output:
 ```
 
 ```text
-Comparison for function 'Door::canOpen':
-0040108A: jne 0x40109a                 | 004010B2: jne 0x4010c2
-00401090: mov eax, 1                   | 004010B8: mov eax, 1
-00401095: jmp 0x4010a1                 | 004010BD: jmp 0x4010e1
-0040109A: xor eax, eax                 | 004010C2: mov eax, dword ptr [0x4070..
-0040109C: jmp 0x4010a1                 | 004010C7: cmp dword ptr [ebp + 8], eax
+Comparison for function 'LessonLog::severity':
+004010A8: push ebp                              | 004010E8: push ebp
+004010A9: mov ebp, esp                          | 004010E9: mov ebp, esp
+004010AB: sub esp, 8                            | 004010EB: push -1
+004010AE: push ebx                              | 004010ED: push 0x40116a
+004010AF: push esi                              | 004010F2: mov eax, dword ptr fs:[0]
+004010B0: push edi                              | 004010F8: push eax
+004010B1: mov dword ptr [ebp - 8], ecx          | 004010F9: mov dword ptr fs:[0], esp
+004010B4: mov eax, dword ptr [ebp - 8]          | 00401100: sub esp, 0x10
+004010B7: mov eax, dword ptr [eax]              | 00401103: push ebx
+004010B9: add eax, dword ptr [ebp + 8]          | 00401104: push esi
+...
+004010DF: mov eax, dword ptr [ebp - 4]          | 00401118: lea ecx, [ebp - 0x10]
+004010E2: jmp 0x4010e7                          | 0040111B: call 0x401220
+004010E7: pop edi                               | 00401120: mov dword ptr [ebp - 4], 0
+004010E8: pop esi                               | 00401127: movsx eax, byte ptr [0x407030]
+004010E9: pop ebx                               | 0040112E: cmp eax, 0x41
+004010EA: leave                                 | 00401131: jne 0x401147
+004010EB: ret 4                                 | 00401137: mov eax, dword ptr [ebp + 8]
+                                                | 0040113A: and eax, 1
+                                                | 0040113D: mov eax, dword ptr [eax*4 + 0x407040]
+                                                | 00401144: add dword ptr [ebp - 0x14], eax
+                                                | 00401147: mov eax, dword ptr [ebp - 0x14]
+                                                | 0040114A: mov dword ptr [ebp - 0x18], eax
+                                                | 0040114D: mov dword ptr [ebp - 4], 0xffffffff
+                                                | 00401154: call 0x401161
+                                                | 00401159: mov eax, dword ptr [ebp - 0x18]
+                                                | 0040115C: jmp 0x401174
 
-Similarity: 80.00%
+Similarity: 52.94%
 ```
 
 ```text

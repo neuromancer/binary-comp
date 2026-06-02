@@ -14,6 +14,15 @@ engineering projects:
 4. Compare layout, function bytes, decoded operands, global data, calls,
    global accesses, vtables, and C++ exception-handling metadata.
 
+## Platform Scope
+
+`binary-comp` is currently optimized for MSVC-built 32-bit PE reconstruction
+projects. Some analyzers are reusable for other binaries when equivalent
+address mappings are available, but several important pieces assume MSVC-era
+conventions: linker maps and symbol names, PE image layout, x86 disassembly,
+common MSVC function prologues, and MSVC C++ exception metadata such as
+`FuncInfo` and `__CxxFrameHandler`.
+
 ## Install
 
 For local development from a checkout, install it editable with all optional
@@ -162,7 +171,7 @@ make setup
 make build
 binary-comp exe --config binary-comp.json --target demo --functions
 binary-comp report --config binary-comp.json --target demo --no-build
-binary-comp compare --config binary-comp.json --target demo --no-build Door::canOpen code/FUN_0040109E.disassembled.txt
+binary-comp compare --config binary-comp.json --target demo --no-build LessonLog::severity code/FUN_004010E8.disassembled.txt
 binary-comp values --config binary-comp.json --target demo --no-build --include-stack-locals
 binary-comp data --config binary-comp.json --target demo
 binary-comp seh --config binary-comp.json --target demo --report --no-build
@@ -190,11 +199,26 @@ Small excerpts from the generated reports:
 ```
 
 ```text
-Comparison for function 'Door::canOpen':
-0040109A: xor eax, eax                 | 004010C2: mov eax, dword ptr [0x4070..
-0040109C: jmp 0x4010a1                 | 004010C7: cmp dword ptr [ebp + 8], eax
+Comparison for function 'LessonLog::severity':
+004010AB: sub esp, 8                            | 004010EB: push -1
+004010AE: push ebx                              | 004010ED: push 0x40116a
+004010AF: push esi                              | 004010F2: mov eax, dword ptr fs:[0]
+004010B0: push edi                              | 004010F8: push eax
+004010B1: mov dword ptr [ebp - 8], ecx          | 004010F9: mov dword ptr fs:[0], esp
+004010B4: mov eax, dword ptr [ebp - 8]          | 00401100: sub esp, 0x10
+...
+004010DF: mov eax, dword ptr [ebp - 4]          | 00401118: lea ecx, [ebp - 0x10]
+004010E2: jmp 0x4010e7                          | 0040111B: call 0x401220
+004010E7: pop edi                               | 00401120: mov dword ptr [ebp - 4], 0
+004010E8: pop esi                               | 00401127: movsx eax, byte ptr [0x407030]
+004010E9: pop ebx                               | 0040112E: cmp eax, 0x41
+004010EA: leave                                 | 00401131: jne 0x401147
+004010EB: ret 4                                 | 00401137: mov eax, dword ptr [ebp + 8]
+                                                | 0040113A: and eax, 1
+                                                | ...
+                                                | 00401154: call 0x401161
 
-Similarity: 80.00%
+Similarity: 52.94%
 ```
 
 ```text
