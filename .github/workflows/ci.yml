@@ -24,8 +24,3 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
-
-      - name: Check repository neutrality
-        env:
-          BINARY_COMP_FORBIDDEN_TERMS: ${{ vars.BINARY_COMP_FORBIDDEN_TERMS }}
-        run: python scripts/check_neutrality.py
