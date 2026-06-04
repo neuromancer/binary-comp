@@ -7,14 +7,20 @@ import pytest
 from binary_comp.analyzers.calls import (
     auto_detect_named_functions,
     build_same_address_aliases,
+    check_calls,
+    collect_source_address_issues,
     canonicalize,
+    CallsOptions,
+    CallsSummary,
     extract_calls_from_compiled,
     extract_calls_from_original,
+    format_calls_summary,
     load_calls_policy,
     normalize_compiled,
     parse_indirect_call,
     policy_with_same_address_aliases,
     resolve_original_call,
+    SourceAddressWarning,
 )
 from binary_comp.analyzers.values import (
     CheckResult,
@@ -116,6 +122,151 @@ def test_call_policy_auto_aliases_same_original_address(tmp_path):
     effective = policy_with_same_address_aliases(target, policy)
 
     assert canonicalize("Alpha", effective) == "Beta"
+
+
+def test_call_source_address_issues_report_duplicate_markers(tmp_path):
+    source_dir = tmp_path / "src"
+    source_dir.mkdir()
+    (source_dir / "a.cpp").write_text(
+        "/* Function start: 0x00401000 */\nvoid Alpha() {}\n",
+        encoding="utf-8",
+    )
+    (source_dir / "b.cpp").write_text(
+        "/* Function start: 0x00401000 */\nvoid Beta() {}\n",
+        encoding="utf-8",
+    )
+    target = ProjectTarget(
+        name="full",
+        original_exe="",
+        rebuilt_exe="",
+        map_path="",
+        source_dirs=(str(source_dir),),
+    )
+    policy = load_calls_policy({})
+
+    issues = collect_source_address_issues(target, policy)
+
+    assert 0x401000 in issues
+    assert any(issue.kind == "duplicate" for issue in issues[0x401000])
+
+
+def test_call_source_address_issues_report_address_islands(tmp_path):
+    source_dir = tmp_path / "src"
+    source_dir.mkdir()
+    (source_dir / "engine.cpp").write_text(
+        """
+/* Function start: 0x00449000 */
+void Engine_A() {}
+/* Function start: 0x00449100 */
+void Engine_B() {}
+/* Function start: 0x00449200 */
+void Engine_C() {}
+/* Function start: 0x0042BF00 */
+void Engine_WrongHelper() {}
+""",
+        encoding="utf-8",
+    )
+    target = ProjectTarget(
+        name="full",
+        original_exe="",
+        rebuilt_exe="",
+        map_path="",
+        source_dirs=(str(source_dir),),
+    )
+    policy = load_calls_policy({})
+
+    issues = collect_source_address_issues(target, policy)
+
+    assert 0x42BF00 in issues
+    assert any(issue.kind == "island" for issue in issues[0x42BF00])
+
+
+def test_call_summary_shows_source_address_warnings_on_clean_call_match():
+    summary = CallsSummary(
+        functions_selected=1,
+        functions_checked=1,
+        mismatches=(),
+        skipped_no_disasm=(),
+        source_address_warnings=(
+            SourceAddressWarning(
+                address=0x42BF00,
+                resolved_name="Engine::StopAndCleanup",
+                details=("address island in src/Engine.cpp",),
+                callers=("SC_Pods::ShutDown",),
+            ),
+        ),
+        iat_loaded=1,
+        report_all=False,
+        strict_memory=False,
+        include_trivial=False,
+    )
+
+    text = format_calls_summary(summary)
+
+    assert "All call targets match!" in text
+    assert "Source address resolution warnings:" in text
+    assert "0x0042BF00 resolved as Engine::StopAndCleanup" in text
+
+
+def test_call_checker_warns_when_clean_match_depends_on_address_island(tmp_path):
+    source_dir = tmp_path / "src"
+    code_dir = tmp_path / "code"
+    asm_dir = tmp_path / "out"
+    source_dir.mkdir()
+    code_dir.mkdir()
+    asm_dir.mkdir()
+
+    (source_dir / "engine.cpp").write_text(
+        """
+/* Function start: 0x00449000 */
+void Engine_A() {}
+/* Function start: 0x00449100 */
+void Engine_B() {}
+/* Function start: 0x00449200 */
+void Engine_C() {}
+/* Function start: 0x0042BF00 */
+void WrongHelper() {}
+/* Function start: 0x004419E0 */
+void Caller() {}
+""",
+        encoding="utf-8",
+    )
+    (code_dir / "FUN_4419E0.disassembled.txt").write_text(
+        """
+Function: FUN_004419e0
+Address: 0x004419E0
+
+CALL 0x0042BF00
+RET
+""",
+        encoding="utf-8",
+    )
+    (asm_dir / "engine.asm").write_text(
+        """
+_TEXT SEGMENT
+?Caller@@YAXXZ PROC NEAR ; Caller
+    call WrongHelper ; WrongHelper
+?Caller@@YAXXZ ENDP
+_TEXT ENDS
+""",
+        encoding="utf-8",
+    )
+    target = ProjectTarget(
+        name="full",
+        original_exe="",
+        rebuilt_exe="",
+        map_path="",
+        source_dirs=(str(source_dir),),
+        code_dir=str(code_dir),
+        asm_dir=str(asm_dir),
+    )
+
+    summary = check_calls({}, target, CallsOptions(filters=("Caller",), build=False))
+
+    assert not summary.mismatches
+    assert len(summary.source_address_warnings) == 1
+    assert summary.source_address_warnings[0].address == 0x42BF00
+    assert summary.source_address_warnings[0].resolved_name == "WrongHelper"
 
 
 def test_source_groups_respect_excluded_files(tmp_path):

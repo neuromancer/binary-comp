@@ -13,7 +13,7 @@ from typing import Any
 
 from binary_comp.config import ConfigError, ProjectTarget, parse_int
 from binary_comp.core.symbols import decode_msvc_pointer_class_tokens, normalize_compiled
-from binary_comp.source.cpp import parse_source_function_groups
+from binary_comp.source.cpp import parse_source_function_groups, parse_source_function_markers
 
 
 IAT_ADDRESSES: dict[int, str] = {}
@@ -66,15 +66,45 @@ class CallMismatch:
 
 
 @dataclass(frozen=True)
+class SourceAddressMarker:
+    address: int
+    function_name: str
+    source_path: str
+    line: int
+
+
+@dataclass(frozen=True)
+class SourceAddressIssue:
+    address: int
+    kind: str
+    details: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SourceAddressWarning:
+    address: int
+    resolved_name: str
+    details: tuple[str, ...]
+    callers: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CallsSummary:
     functions_selected: int
     functions_checked: int
     mismatches: tuple[CallMismatch, ...]
     skipped_no_disasm: tuple[tuple[str, int, str], ...]
+    source_address_warnings: tuple[SourceAddressWarning, ...]
     iat_loaded: int
     report_all: bool
     strict_memory: bool
     include_trivial: bool
+
+
+ADDRESS_CLUSTER_MAX_GAP = 0x4000
+ADDRESS_ISLAND_MIN_FILE_MARKERS = 4
+ADDRESS_ISLAND_DOMINANT_MIN = 3
+ADDRESS_ISLAND_MAX_CLUSTER_SIZE = 2
 
 
 def parse_int_map(mapping: Any, label: str) -> dict[int, str]:
@@ -144,6 +174,93 @@ def iter_source_address_names(target: ProjectTarget, policy: CallsPolicy):
         for addrs, func_name in iter_source_functions(cpp_file, policy, include_no_assembly=True):
             for addr in addrs:
                 yield addr, func_name
+
+
+def collect_source_address_markers(target: ProjectTarget, policy: CallsPolicy) -> dict[int, list[SourceAddressMarker]]:
+    markers_by_addr: dict[int, list[SourceAddressMarker]] = {}
+    for cpp_file in iter_cpp_files(target.source_dirs, target.map_skip, target.source_excludes):
+        for marker in parse_source_function_markers(
+            cpp_file,
+            include_no_assembly=True,
+            signature_names=policy.signature_overloads,
+        ):
+            addr = int(marker.address, 16)
+            markers_by_addr.setdefault(addr, []).append(SourceAddressMarker(
+                address=addr,
+                function_name=marker.name,
+                source_path=cpp_file,
+                line=marker.line,
+            ))
+    return markers_by_addr
+
+
+def format_source_marker(marker: SourceAddressMarker) -> str:
+    path = os.path.relpath(marker.source_path)
+    return f"{path}:{marker.line} {marker.function_name}"
+
+
+def address_clusters(addrs: list[int], max_gap: int = ADDRESS_CLUSTER_MAX_GAP) -> list[list[int]]:
+    if not addrs:
+        return []
+    unique = sorted(set(addrs))
+    clusters = [[unique[0]]]
+    for addr in unique[1:]:
+        if addr - clusters[-1][-1] <= max_gap:
+            clusters[-1].append(addr)
+        else:
+            clusters.append([addr])
+    return clusters
+
+
+def collect_source_address_issues(target: ProjectTarget, policy: CallsPolicy) -> dict[int, list[SourceAddressIssue]]:
+    markers_by_addr = collect_source_address_markers(target, policy)
+    issues: dict[int, list[SourceAddressIssue]] = {}
+
+    for addr, markers in markers_by_addr.items():
+        distinct_markers = tuple(dict.fromkeys(format_source_marker(marker) for marker in markers))
+        if len(distinct_markers) > 1:
+            issues.setdefault(addr, []).append(SourceAddressIssue(
+                address=addr,
+                kind="duplicate",
+                details=(f"duplicate source markers: {'; '.join(distinct_markers)}",),
+            ))
+
+    markers_by_file: dict[str, list[SourceAddressMarker]] = {}
+    for markers in markers_by_addr.values():
+        for marker in markers:
+            markers_by_file.setdefault(marker.source_path, []).append(marker)
+
+    for source_path, markers in markers_by_file.items():
+        file_addrs = sorted({marker.address for marker in markers})
+        if len(file_addrs) < ADDRESS_ISLAND_MIN_FILE_MARKERS:
+            continue
+
+        clusters = address_clusters(file_addrs)
+        if len(clusters) < 2:
+            continue
+
+        dominant = max(clusters, key=len)
+        if len(dominant) < ADDRESS_ISLAND_DOMINANT_MIN:
+            continue
+
+        dominant_range = f"0x{dominant[0]:08X}..0x{dominant[-1]:08X}"
+        source_label = os.path.relpath(source_path)
+        for cluster in clusters:
+            if cluster is dominant or len(cluster) > ADDRESS_ISLAND_MAX_CLUSTER_SIZE:
+                continue
+            cluster_range = f"0x{cluster[0]:08X}..0x{cluster[-1]:08X}"
+            detail = (
+                f"address island in {source_label}: cluster {cluster_range} "
+                f"is outside dominant cluster {dominant_range}"
+            )
+            for addr in cluster:
+                issues.setdefault(addr, []).append(SourceAddressIssue(
+                    address=addr,
+                    kind="island",
+                    details=(detail,),
+                ))
+
+    return issues
 
 
 def build_same_address_aliases(target: ProjectTarget, policy: CallsPolicy) -> dict[str, str]:
@@ -748,6 +865,8 @@ def check_calls(config: dict[str, Any], target: ProjectTarget, options: CallsOpt
     IAT_ADDRESSES.update(policy.iat_addresses)
 
     addr_map = build_address_to_name_map(target, policy)
+    source_address_issues = collect_source_address_issues(target, policy)
+    source_issue_callers: dict[int, set[str]] = {}
     named_addr_map = auto_detect_named_functions(target.code_dir) if target.code_dir else {}
     total_checked = 0
     mismatches = []
@@ -762,6 +881,9 @@ def check_calls(config: dict[str, Any], target: ProjectTarget, options: CallsOpt
             function.occurrence_index,
             policy.signature_overloads,
         )
+        for call in orig_raw:
+            if isinstance(call, int) and call in addr_map and call in source_address_issues:
+                source_issue_callers.setdefault(call, set()).add(function.function_name)
         if not orig_raw and not compiled_raw:
             continue
         total_checked += 1
@@ -827,11 +949,24 @@ def check_calls(config: dict[str, Any], target: ProjectTarget, options: CallsOpt
             extra=dict(real_compiled),
         ))
 
+    source_warnings = []
+    for addr in sorted(source_issue_callers):
+        details = []
+        for issue in source_address_issues.get(addr, []):
+            details.extend(issue.details)
+        source_warnings.append(SourceAddressWarning(
+            address=addr,
+            resolved_name=addr_map.get(addr, f"FUN_{addr:08X}"),
+            details=tuple(dict.fromkeys(details)),
+            callers=tuple(sorted(source_issue_callers[addr])),
+        ))
+
     return CallsSummary(
         functions_selected=len(functions),
         functions_checked=total_checked,
         mismatches=tuple(sorted(mismatches, key=lambda item: item.function_name)),
         skipped_no_disasm=tuple(skipped_no_disasm),
+        source_address_warnings=tuple(source_warnings),
         iat_loaded=len(IAT_ADDRESSES),
         report_all=options.show_all,
         strict_memory=options.strict_memory,
@@ -871,14 +1006,25 @@ def format_calls_summary(summary: CallsSummary) -> str:
 
     if not summary.mismatches:
         lines.append("All call targets match!")
-        return "\n".join(lines)
+    else:
+        for mismatch in summary.mismatches:
+            lines.append(f"{mismatch.function_name} (0x{mismatch.original_addr:X}) [{mismatch.filename}]")
+            for name, count in sorted(mismatch.missing.items()):
+                tag = " (unresolved)" if name.startswith("FUN_") else ""
+                lines.append(f"  MISSING: {name} x{count}{tag}")
+            for name, count in sorted(mismatch.extra.items()):
+                lines.append(f"  EXTRA:   {name} x{count}")
+            lines.append("")
 
-    for mismatch in summary.mismatches:
-        lines.append(f"{mismatch.function_name} (0x{mismatch.original_addr:X}) [{mismatch.filename}]")
-        for name, count in sorted(mismatch.missing.items()):
-            tag = " (unresolved)" if name.startswith("FUN_") else ""
-            lines.append(f"  MISSING: {name} x{count}{tag}")
-        for name, count in sorted(mismatch.extra.items()):
-            lines.append(f"  EXTRA:   {name} x{count}")
+    if summary.source_address_warnings and (not summary.mismatches or summary.report_all):
         lines.append("")
+        lines.append("Source address resolution warnings:")
+        for warning in summary.source_address_warnings[:25]:
+            lines.append(f"  0x{warning.address:08X} resolved as {warning.resolved_name}")
+            for detail in warning.details:
+                lines.append(f"    - {detail}")
+            lines.append(f"    - used by original calls in: {', '.join(warning.callers)}")
+        if len(summary.source_address_warnings) > 25:
+            remaining = len(summary.source_address_warnings) - 25
+            lines.append(f"  ... {remaining} more warning(s) omitted")
     return "\n".join(lines)
