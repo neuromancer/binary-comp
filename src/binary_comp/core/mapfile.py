@@ -22,6 +22,17 @@ class EncodedAddressMapEntry:
     object_file: str | None
 
 
+@dataclass(frozen=True)
+class MapSymbol:
+    """A single ``segment:offset symbol va [f] [object]`` map line."""
+
+    segment: int
+    va: int
+    symbol: str
+    is_function: bool
+    object_file: str | None
+
+
 FUNCTION_LINE_RE = re.compile(
     r"0001:[0-9a-fA-F]+\s+(\S+)\s+([0-9a-fA-F]{8})\s+f\s+(\S+\.obj)"
 )
@@ -30,6 +41,9 @@ MAP_SYMBOL_LINE_RE = re.compile(
 )
 ENCODED_ADDRESS_SUFFIX_RE = re.compile(
     r"_([0-9a-fA-F]{6,8})(?:@@\S*)?$"
+)
+ANY_SEGMENT_SYMBOL_LINE_RE = re.compile(
+    r"^\s*(?P<segment>[0-9a-fA-F]{4}):[0-9a-fA-F]+\s+(?P<symbol>\S+)\s+(?P<va>[0-9a-fA-F]{8})(?P<rest>.*)$"
 )
 
 
@@ -56,6 +70,36 @@ def parse_msvc_map_by_obj(map_path: str) -> dict[str, list[MapEntry]]:
 def function_starts_from_map(entries_by_obj: dict[str, list[MapEntry]]) -> list[int]:
     starts = {entry.va for entries in entries_by_obj.values() for entry in entries}
     return sorted(starts)
+
+
+def parse_msvc_map_symbols(map_path: str) -> list[MapSymbol]:
+    """All map symbols across every segment, sorted by address.
+
+    ``parse_msvc_map_by_obj`` only reports code symbols from segment 0001.
+    Vtables live in the CONST segment, so the vtable checks need the wider
+    view. Returns an empty list when the map is missing.
+    """
+    symbols: list[MapSymbol] = []
+    if not os.path.exists(map_path):
+        return symbols
+
+    with open(map_path, "r", encoding="latin1", errors="ignore") as f:
+        for line in f:
+            match = ANY_SEGMENT_SYMBOL_LINE_RE.match(line)
+            if not match:
+                continue
+            rest = match.group("rest").split()
+            object_file = next((token for token in rest if token.endswith(".obj")), None)
+            symbols.append(MapSymbol(
+                segment=int(match.group("segment"), 16),
+                va=int(match.group("va"), 16),
+                symbol=match.group("symbol"),
+                is_function=bool(rest) and rest[0] == "f",
+                object_file=object_file,
+            ))
+
+    symbols.sort(key=lambda entry: (entry.va, entry.symbol))
+    return symbols
 
 
 def parse_encoded_address_map(map_path: str) -> dict[int, int]:

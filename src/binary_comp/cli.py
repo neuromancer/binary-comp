@@ -133,7 +133,13 @@ def add_vtables_parser(subparsers) -> None:
     parser.add_argument("--class", dest="filter_class", help="Filter to specific class")
     parser.add_argument("--rdata-min", type=lambda value: int(value, 0), help="Fallback .rdata start address")
     parser.add_argument("--rdata-max", type=lambda value: int(value, 0), help="Fallback .rdata end address")
-    parser.set_defaults(handler=run_vtables)
+    parser.add_argument(
+        "--no-rebuilt",
+        dest="check_rebuilt",
+        action="store_false",
+        help="Skip diffing the vtables the rebuilt binary emits against the original",
+    )
+    parser.set_defaults(handler=run_vtables, check_rebuilt=True)
 
 
 def add_data_parser(subparsers) -> None:
@@ -462,6 +468,7 @@ def run_vtables(args) -> int:
                 filter_class=args.filter_class,
                 rdata_min=args.rdata_min,
                 rdata_max=args.rdata_max,
+                check_rebuilt=args.check_rebuilt,
             ),
         )
     except (ConfigError, FileNotFoundError, RuntimeError, ValueError) as exc:

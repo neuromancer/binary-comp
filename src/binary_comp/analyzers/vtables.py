@@ -9,6 +9,11 @@ import struct
 from dataclasses import dataclass
 from typing import Any
 
+from binary_comp.analyzers.rebuilt_vtables import (
+    RebuiltVtableSummary,
+    compare_rebuilt_vtables,
+    format_rebuilt_vtable_summary,
+)
 from binary_comp.config import ConfigError, ProjectTarget, parse_int
 from binary_comp.core.disasm import Instruction, disassemble_x86, unsigned32
 from binary_comp.core.ghidra import function_starts_from_export_dir
@@ -34,6 +39,7 @@ class VtableOptions:
     filter_class: str | None = None
     rdata_min: int | None = None
     rdata_max: int | None = None
+    check_rebuilt: bool = True
 
 
 @dataclass(frozen=True)
@@ -117,9 +123,12 @@ class VtableSummary:
     reports: tuple[ClassReport, ...]
     totals: dict[str, int]
     unmatched_vtables: tuple[int, ...]
+    rebuilt: RebuiltVtableSummary | None = None
 
     @property
     def has_failures(self) -> bool:
+        if self.rebuilt is not None and self.rebuilt.has_failures:
+            return True
         return bool(self.totals["missing_real"] or self.totals["symbol_mismatch"])
 
 
@@ -1022,6 +1031,22 @@ def read_vtable_entries(image: PEImage, vtable_addr: int, code_start: int, code_
     return tuple(entries)
 
 
+def read_class_vtables(
+    image: PEImage,
+    classes: dict[str, dict[str, Any]],
+    all_vtable_addrs: tuple[int, ...],
+    code_start: int,
+    code_end: int,
+) -> dict[str, tuple[int, ...]]:
+    vtables: dict[str, tuple[int, ...]] = {}
+    for class_name, info in classes.items():
+        addr = info["vtable_addr"]
+        idx = all_vtable_addrs.index(addr) if addr in all_vtable_addrs else -1
+        max_addr = all_vtable_addrs[idx + 1] if idx >= 0 and idx + 1 < len(all_vtable_addrs) else addr + 0x100
+        vtables[class_name] = read_vtable_entries(image, addr, code_start, code_end, max_addr)
+    return vtables
+
+
 def build_expected_vtable_slots(
     class_name: str,
     classes: dict[str, dict[str, Any]],
@@ -1086,12 +1111,7 @@ def build_class_reports(
     for class_name in classes:
         build_expected_vtable_slots(class_name, classes, class_methods, expected_slots, policy)
 
-    vtables = {}
-    for class_name, info in classes.items():
-        addr = info["vtable_addr"]
-        idx = all_vtable_addrs.index(addr) if addr in all_vtable_addrs else -1
-        max_addr = all_vtable_addrs[idx + 1] if idx >= 0 and idx + 1 < len(all_vtable_addrs) else addr + 0x100
-        vtables[class_name] = read_vtable_entries(image, addr, code_start, code_end, max_addr)
+    vtables = read_class_vtables(image, classes, all_vtable_addrs, code_start, code_end)
 
     func_types = {}
     for entries in vtables.values():
@@ -1366,6 +1386,17 @@ def check_vtables(config: dict[str, Any], target: ProjectTarget, options: Vtable
         policy,
     )
 
+    rebuilt = None
+    if options.check_rebuilt:
+        rebuilt = compare_rebuilt_vtables(
+            target,
+            classes,
+            read_class_vtables(image, classes, all_vtable_addrs, code_start, code_end),
+            find_source_function_symbols(target.source_dirs, target.map_skip),
+            skip_classes=policy.skip_classes,
+            filter_class=options.filter_class,
+        )
+
     return VtableSummary(
         binary=target.original_exe,
         code_range=(code_start, code_end),
@@ -1381,6 +1412,7 @@ def check_vtables(config: dict[str, Any], target: ProjectTarget, options: Vtable
         reports=reports,
         totals=totals,
         unmatched_vtables=unmatched,
+        rebuilt=rebuilt,
     )
 
 
@@ -1514,5 +1546,8 @@ def format_vtable_summary(summary: VtableSummary, dump: bool = False) -> str:
         lines.append(f"\nVtable addresses not matched to any class ({len(summary.unmatched_vtables)}):")
         for addr in summary.unmatched_vtables:
             lines.append(f"  0x{addr:08X}")
+
+    if summary.rebuilt is not None:
+        lines.append(format_rebuilt_vtable_summary(summary.rebuilt))
 
     return "\n".join(lines)

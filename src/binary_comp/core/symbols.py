@@ -172,3 +172,49 @@ def symbol_patterns_for_function(name: str) -> list[str]:
 
 def symbol_matches(mangled: str, patterns: list[str]) -> bool:
     return any(pattern == mangled or mangled.startswith(pattern) or pattern in mangled for pattern in patterns)
+
+
+VFTABLE_SYMBOL_RE = re.compile(r"^\?\?_7(?P<cls>\w+)@@6B")
+DELETING_DTOR_SYMBOL_RE = re.compile(r"^\?\?_[EG](?P<cls>\w+)@@")
+DTOR_SYMBOL_RE = re.compile(r"^\?\?1(?P<cls>\w+)@@")
+CTOR_SYMBOL_RE = re.compile(r"^\?\?0(?P<cls>\w+)@@")
+METHOD_SYMBOL_RE = re.compile(r"^\?(?P<method>\w+)@(?P<cls>\w+)@@")
+
+PURECALL_SYMBOLS = frozenset({"_purecall", "__purecall"})
+
+
+def msvc_vftable_class(mangled: str) -> str | None:
+    """Class name of a ``??_7<Class>@@6B@`` vftable symbol, else None."""
+    match = VFTABLE_SYMBOL_RE.match(mangled)
+    return match.group("cls") if match else None
+
+
+def msvc_method_symbol(mangled: str) -> tuple[str, str] | None:
+    """``(class, method)`` for a mangled MSVC member function, else None.
+
+    Deleting destructors (``??_E``/``??_G``) and plain destructors (``??1``)
+    all report as ``~Class`` so callers can treat them interchangeably; the
+    compiler chooses which one lands in a vtable slot.  Free functions,
+    vftables and unrecognized decorations return None.
+    """
+    if mangled in PURECALL_SYMBOLS:
+        return None
+    if VFTABLE_SYMBOL_RE.match(mangled):
+        return None
+    for pattern in (DELETING_DTOR_SYMBOL_RE, DTOR_SYMBOL_RE):
+        match = pattern.match(mangled)
+        if match:
+            cls = match.group("cls")
+            return cls, f"~{cls}"
+    match = CTOR_SYMBOL_RE.match(mangled)
+    if match:
+        cls = match.group("cls")
+        return cls, cls
+    match = METHOD_SYMBOL_RE.match(mangled)
+    if match:
+        return match.group("cls"), match.group("method")
+    return None
+
+
+def is_destructor_method(method_name: str) -> bool:
+    return method_name.startswith("~")
