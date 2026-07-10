@@ -672,6 +672,16 @@ def next_mnemonic(instrs: list[Instruction], idx: int) -> str | None:
     return instrs[idx + 1].mnemonic
 
 
+def next_instruction(instrs: list[Instruction], idx: int) -> Instruction | None:
+    if idx + 1 >= len(instrs):
+        return None
+    return instrs[idx + 1]
+
+
+def is_conditional_branch_mnemonic(mnemonic: str) -> bool:
+    return mnemonic.startswith("j") and mnemonic != "jmp"
+
+
 def equivalent_integer_threshold(
     c_imm: int,
     o_imm: int,
@@ -694,6 +704,42 @@ def equivalent_integer_threshold(
     if (c_next, o_next) in (("jng", "jnge"), ("jbe", "jc")):
         return o_imm == c_imm + 1
     return False
+
+
+def same_cmp_immediate_values(compiled: Instruction, original: Instruction) -> bool:
+    c_imms = dict(immediate_operands(compiled))
+    o_imms = dict(immediate_operands(original))
+    if not c_imms or set(c_imms) != set(o_imms):
+        return False
+    return all(c_imms[idx].imm == o_imms[idx].imm for idx in c_imms)
+
+
+def report_cmp_branch_condition_mismatch(
+    compiled_instrs: list[Instruction],
+    original_instrs: list[Instruction],
+    ci: int,
+    oi: int,
+    context: CompareContext,
+) -> tuple | None:
+    if "immediates" not in context.enabled_kinds:
+        return None
+
+    compiled = compiled_instrs[ci]
+    original = original_instrs[oi]
+    if compiled.mnemonic != "cmp" or original.mnemonic != "cmp":
+        return None
+    if not same_cmp_immediate_values(compiled, original):
+        return None
+
+    c_next = next_instruction(compiled_instrs, ci)
+    o_next = next_instruction(original_instrs, oi)
+    if c_next is None or o_next is None:
+        return None
+    if not (is_conditional_branch_mnemonic(c_next.mnemonic) and is_conditional_branch_mnemonic(o_next.mnemonic)):
+        return None
+    if c_next.mnemonic == o_next.mnemonic:
+        return None
+    return ("branch", c_next.mnemonic, o_next.mnemonic, c_next, o_next)
 
 
 def starts_boolean_mask_after_cmp(instrs: list[Instruction], idx: int) -> bool:
@@ -863,6 +909,9 @@ def compare_instruction_pair(
         return warnings
     if compare_targets_msvc_eh_state(compiled_instrs, original_instrs, compiled, original, context):
         return warnings
+    branch_warning = report_cmp_branch_condition_mismatch(compiled_instrs, original_instrs, ci, oi, context)
+    if branch_warning is not None:
+        warnings.append(branch_warning)
 
     c_imms = dict(immediate_operands(compiled))
     o_imms = dict(immediate_operands(original))
@@ -1046,11 +1095,17 @@ def format_warning(warning: tuple) -> str:
             f"0x{compiled.address:08X} {compiled.raw}  |  "
             f"0x{original.address:08X} {original.raw}"
         )
+    if kind == "branch":
+        return (
+            f"    BRANCH compiled {compiled_value} vs original {original_value}: "
+            f"0x{compiled.address:08X} {compiled.raw}  |  "
+            f"0x{original.address:08X} {original.raw}"
+        )
     return str(warning)
 
 
 def warning_kind_counts(warnings: tuple) -> dict[str, int]:
-    counts = {"imm": 0, "string": 0, "offset": 0}
+    counts = {"imm": 0, "string": 0, "offset": 0, "branch": 0}
     for warning in warnings:
         if not warning:
             continue
@@ -1060,7 +1115,7 @@ def warning_kind_counts(warnings: tuple) -> dict[str, int]:
 
 
 def format_kind_counts(counts: dict[str, int]) -> str:
-    labels = (("imm", "IMM"), ("string", "STRING"), ("offset", "OFFSET"))
+    labels = (("imm", "IMM"), ("string", "STRING"), ("offset", "OFFSET"), ("branch", "BRANCH"))
     parts = [f"{label} {counts[kind]}" for kind, label in labels if counts.get(kind, 0)]
     return ", ".join(parts) if parts else "none"
 
