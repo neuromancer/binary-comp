@@ -94,6 +94,14 @@ STUBS = {
             public Address next() {
                 return this;
             }
+
+            public boolean isMemoryAddress() {
+                return true;
+            }
+
+            public boolean isExternalAddress() {
+                return false;
+            }
         }
     """,
     "ghidra/program/model/address/AddressSetView.java": """
@@ -193,6 +201,8 @@ STUBS = {
 
         import ghidra.program.model.address.Address;
 
+        import ghidra.program.model.symbol.FlowType;
+
         public class Instruction {
             public String getMnemonicString() {
                 return "";
@@ -208,6 +218,19 @@ STUBS = {
 
             public Address getMaxAddress() {
                 return new Address();
+            }
+
+            public FlowType getFlowType() {
+                return new FlowType();
+            }
+        }
+    """,
+    "ghidra/program/model/symbol/FlowType.java": """
+        package ghidra.program.model.symbol;
+
+        public class FlowType {
+            public boolean isComputed() {
+                return false;
             }
         }
     """,

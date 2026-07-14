@@ -156,6 +156,60 @@ def make_operand(insn, op) -> Operand:
     return Operand("other", "")
 
 
+def sweep_x86(
+    md: "Cs",
+    image: PEImage,
+    start: int,
+    end: int,
+    data_ranges: tuple[tuple[int, int], ...],
+    padding_mnemonics: frozenset[str],
+) -> list[Instruction]:
+    """Linear sweep of [start, end), stepping over known data ranges.
+
+    Restarting the decode after each range is the whole point: a switch table
+    sitting in the middle of a function is not code, and letting the sweep run
+    through it leaves the decoder straddling instruction boundaries for the rest
+    of the body.
+    """
+    ranges = sorted(data_ranges)
+    instructions: list[Instruction] = []
+    cursor = start
+
+    while cursor < end:
+        inside = next((hi for lo, hi in ranges if lo <= cursor < hi), None)
+        if inside is not None:
+            cursor = inside
+            continue
+
+        stop = min([end] + [lo for lo, _ in ranges if lo > cursor])
+        chunk = image.read(cursor, stop - cursor)
+        if not chunk:
+            break
+
+        chunk_start = cursor
+        for insn in md.disasm(chunk, chunk_start):
+            cursor = insn.address + insn.size
+            mnemonic = normalize_mnemonic(insn.mnemonic)
+            if mnemonic in padding_mnemonics:
+                continue
+            operands = tuple(make_operand(insn, op) for op in insn.operands)
+            instructions.append(Instruction(
+                address=insn.address,
+                mnemonic=mnemonic,
+                op_str=insn.op_str,
+                operands=operands,
+                raw=f"{insn.mnemonic} {insn.op_str}".strip(),
+                size=insn.size,
+            ))
+
+        if cursor < stop:
+            # Capstone gave up on a byte it could not decode; step over it and
+            # resume, otherwise we would spin here forever.
+            cursor = max(cursor, chunk_start) + 1
+
+    return instructions
+
+
 def disassemble_x86(
     image: PEImage,
     start: int,
@@ -172,28 +226,20 @@ def disassemble_x86(
 
     md = Cs(CS_ARCH_X86, CS_MODE_32)
     md.detail = True
-    instructions: list[Instruction] = []
-    for insn in md.disasm(data, start):
-        mnemonic = normalize_mnemonic(insn.mnemonic)
-        if mnemonic in padding_mnemonics:
-            continue
-        operands = tuple(make_operand(insn, op) for op in insn.operands)
-        instructions.append(Instruction(
-            address=insn.address,
-            mnemonic=mnemonic,
-            op_str=insn.op_str,
-            operands=operands,
-            raw=f"{insn.mnemonic} {insn.op_str}".strip(),
-            size=insn.size,
-        ))
+
+    data_ranges: tuple[tuple[int, int], ...] = ()
+    instructions = sweep_x86(md, image, start, end, data_ranges, padding_mnemonics)
 
     if remove_jump_tables:
-        data_ranges = switch_jump_table_ranges(image, instructions, start, end)
-        if data_ranges:
-            instructions = [
-                instr for instr in instructions
-                if not address_in_ranges(instr.address, data_ranges)
-            ]
+        # Each pass can only spot a table whose `jmp [reg*4 + table]` decoded
+        # cleanly, and a table found late re-syncs the bytes after it, which can
+        # expose another one. Re-sweep until the set of tables stops growing.
+        for _ in range(8):
+            found = switch_jump_table_ranges(image, instructions, start, end)
+            if set(found) <= set(data_ranges):
+                break
+            data_ranges = merge_ranges(list(data_ranges) + list(found))
+            instructions = sweep_x86(md, image, start, end, data_ranges, padding_mnemonics)
 
     if trim_msvc_seh:
         instructions = trim_seh_cleanup_funclets(instructions)
