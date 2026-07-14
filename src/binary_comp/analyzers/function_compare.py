@@ -191,6 +191,7 @@ def map_symbol_matches_function(mangled: str, function_name: str) -> bool:
         mangled == f"_{base}"
         or mangled.startswith(f"_{base}@")
         or mangled.startswith(f"?{base}@@")
+        or mangled.startswith(f"@{base}@")
     )
 
 
