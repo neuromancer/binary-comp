@@ -167,7 +167,9 @@ def symbol_patterns_for_function(name: str) -> list[str]:
         if method_name.startswith("~"):
             return [f"??1{class_leaf}@@"]
         return [f"?{method_name}@{class_leaf}@@"]
-    return [f"?{base}@@", f"_{base}@", f"_{base}"]
+    # `?name@@...` is C++; `@name@N` is C __fastcall, `_name@N` C __stdcall and
+    # `_name` C __cdecl.  A source tree compiled as C emits the last three.
+    return [f"?{base}@@", f"@{base}@", f"_{base}@", f"_{base}"]
 
 
 def symbol_matches(mangled: str, patterns: list[str]) -> bool:

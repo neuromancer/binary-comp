@@ -18,6 +18,7 @@ import ghidra.program.model.listing.Listing;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.symbol.Symbol;
 
 import java.io.BufferedWriter;
@@ -175,14 +176,30 @@ public class ExportToCompile extends GhidraScript {
         if (flows != null && flows.length > 0 && flows[0] != null) {
             Address target = flows[0];
             if (isCallMnemonic(mnemonic)) {
-                return "CALL " + formatAddress(target);
-            }
-            if (isJumpMnemonic(mnemonic) && body.contains(target)) {
+                // Only a *direct* call can be rendered as "CALL <target>".  An
+                // indirect call (CALL dword ptr [...]) has a computed flow, and
+                // once Ghidra resolves it to an imported function that flow
+                // points into the EXTERNAL address space, whose offset is a
+                // small ordinal-like number.  Printing it ("CALL 0x00000088")
+                // throws away the IAT slot the caller actually reads, so fall
+                // through and let the operand text speak for itself.
+                if (!isIndirectFlow(instruction, target)) {
+                    return "CALL " + formatAddress(target);
+                }
+            } else if (isJumpMnemonic(mnemonic) && body.contains(target)) {
                 return String.format("%-8s LAB_%08X", mnemonic.toUpperCase(), target.getOffset());
             }
         }
 
         return uppercaseMnemonic(instruction.toString());
+    }
+
+    private boolean isIndirectFlow(Instruction instruction, Address target) {
+        FlowType flow = instruction.getFlowType();
+        if (flow != null && flow.isComputed()) {
+            return true;
+        }
+        return target.isExternalAddress() || !target.isMemoryAddress();
     }
 
     private boolean isCallMnemonic(String mnemonic) {
