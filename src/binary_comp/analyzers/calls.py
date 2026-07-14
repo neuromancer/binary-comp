@@ -54,6 +54,10 @@ class SelectedFunction:
     original_addr: int
     disasm_path: str
     asm_path: str
+    # A source function may carry several "Function start" markers when the
+    # original body was split across addresses.  The call multiset has to be the
+    # union of every chunk, not just one of them.
+    disasm_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -811,12 +815,17 @@ def select_functions(
             occurrence_index = occurrences.get(func_name, 0)
             occurrences[func_name] = occurrence_index + 1
             addr = addrs[-1]
-            disasm_path = find_disasm_path(target.code_dir, addr)
-            if disasm_path is None or not has_disassembly_body(disasm_path):
+            paths = []
+            for chunk in addrs:
+                chunk_path = find_disasm_path(target.code_dir, chunk)
+                if chunk_path is not None and has_disassembly_body(chunk_path):
+                    paths.append(chunk_path)
+            if not paths:
                 skipped_no_disasm.append((func_name, addr, cpp_file))
                 continue
             asm_path = os.path.join(target.asm_dir, os.path.splitext(os.path.basename(cpp_file))[0] + ".asm")
-            functions.append(SelectedFunction(cpp_file, func_name, occurrence_index, addr, disasm_path, asm_path))
+            functions.append(SelectedFunction(
+                cpp_file, func_name, occurrence_index, addr, paths[-1], asm_path, tuple(paths)))
     return functions, skipped_no_disasm
 
 
@@ -874,7 +883,9 @@ def check_calls(config: dict[str, Any], target: ProjectTarget, options: CallsOpt
     for function in functions:
         if not os.path.exists(function.asm_path):
             continue
-        orig_raw = extract_calls_from_original(function.disasm_path, policy)
+        orig_raw = []
+        for chunk_path in (function.disasm_paths or (function.disasm_path,)):
+            orig_raw.extend(extract_calls_from_original(chunk_path, policy))
         compiled_raw = extract_calls_from_compiled(
             function.asm_path,
             function.function_name,
