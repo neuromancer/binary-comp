@@ -289,6 +289,41 @@ def test_tpu_compare_spec_uses_function_compare_format(tmp_path):
     assert "retf" in text
 
 
+def test_tpu_compare_spec_scores_masked_byte_match_as_exact(tmp_path):
+    pytest.importorskip("capstone")
+
+    # These linked fixup bytes are in a region that Capstone decodes as code.
+    # If mnemonic scoring runs on the zeroed TPU fixup bytes, instruction
+    # boundaries shift and an exact masked byte match scores below 100%.
+    original = tmp_path / "original.bin"
+    original.write_bytes(bytes.fromhex("2e 02 0e e8 f4 d5 31 c0 cb"))
+    tpu = tmp_path / "unit.tpu"
+    tpu.write_bytes(make_tpu([
+        (
+            bytes.fromhex("2e 02 0e e8 00 00 31 c0 cb"),
+            [(0, 0x10, 0, 0, 4)],
+        )
+    ]))
+
+    byte_comparison = compare_tpu_to_original(
+        original_path=original,
+        original_offset=0,
+        tpu_path=tpu,
+        name="fn",
+    )
+    assert byte_comparison.matches
+
+    comparison = compare_tpu_spec(TpuCompareSpec(
+        name="fn",
+        function_name="fn",
+        original_path=str(original),
+        original_offset=0,
+        tpu_path=str(tpu),
+    ))
+
+    assert comparison.similarity == pytest.approx(100.0)
+
+
 def test_tpu_report_reads_config_entries(tmp_path):
     pytest.importorskip("capstone")
 

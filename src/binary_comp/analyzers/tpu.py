@@ -577,10 +577,13 @@ def compare_tpu_spec(spec: TpuCompareSpec) -> FunctionComparison:
         raise TpuCompareError("could not disassemble original bytes")
     if not rebuilt.instructions:
         raise TpuCompareError("could not disassemble rebuilt TPU bytes")
-    similarity = mnemonic_similarity(
-        instruction_mnemonics(rebuilt.instructions),
-        instruction_mnemonics(original.instructions),
-    )
+    if byte_comparison.matches:
+        similarity = 100.0
+    else:
+        similarity = mnemonic_similarity(
+            instruction_mnemonics(rebuilt.instructions),
+            instruction_mnemonics(original.instructions),
+        )
     return FunctionComparison(
         function_name=spec.function_name,
         original_addr=byte_comparison.original_offset,
