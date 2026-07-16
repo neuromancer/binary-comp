@@ -186,6 +186,7 @@ class TpuCompareSpec:
     tpu_path: str
     size: int | None = None
     code_offset: int = 0
+    block_offset: int = 0
     block_index: int | None = None
     locate: bool = False
     source_path: str | None = None
@@ -405,6 +406,7 @@ def select_code_window(
     block_index: int | None = None,
     function_name: str | None = None,
     code_offset: int = 0,
+    block_offset: int = 0,
     size: int | None = None,
 ) -> tuple[int, bytes]:
     """Return ``(start, bytes)`` for a window of the concatenated code section.
@@ -428,11 +430,18 @@ def select_code_window(
                 f"compile may have failed silently — check the build log."
             )
         block = obj.blocks[block_index]
-        window = obj.code[block.code_offset:block.code_offset + block.size]
+        if block_offset < 0 or block_offset > block.size:
+            raise TpuCompareError("block_offset outside selected CODE block")
+        start = block.code_offset + block_offset
+        window = obj.code[start:block.code_offset + block.size]
         if size is not None:
+            if size < 0:
+                raise TpuCompareError("size must be non-negative")
             window = window[:size]
-        return block.code_offset, window
+        return start, window
 
+    if block_offset:
+        raise TpuCompareError("block_offset requires block or function selection")
     if code_offset < 0 or code_offset > len(obj.code):
         raise TpuCompareError("code_offset outside CODE section")
     window = obj.code[code_offset:]
@@ -506,6 +515,7 @@ def compare_tpu_to_original(
     tpu_path: str | Path,
     size: int | None = None,
     code_offset: int = 0,
+    block_offset: int = 0,
     block_index: int | None = None,
     function_name: str | None = None,
     locate: bool = False,
@@ -517,6 +527,7 @@ def compare_tpu_to_original(
         block_index=block_index,
         function_name=function_name,
         code_offset=code_offset,
+        block_offset=block_offset,
         size=size,
     )
     original_data = Path(original_path).read_bytes()
@@ -560,6 +571,7 @@ def compare_tpu_spec(spec: TpuCompareSpec) -> FunctionComparison:
         tpu_path=spec.tpu_path,
         size=spec.size,
         code_offset=spec.code_offset,
+        block_offset=spec.block_offset,
         block_index=spec.block_index,
         function_name=spec.function_name,
         locate=spec.locate,
@@ -673,6 +685,7 @@ def load_tpu_specs(
             tpu_path=resolve_config_path(config_path, tpu_path) or "",
             size=parse_config_int(item.get("size"), f"{label}.size", required=False),
             code_offset=parse_config_int(item.get("code_offset", 0), f"{label}.code_offset") or 0,
+            block_offset=parse_config_int(item.get("block_offset", 0), f"{label}.block_offset") or 0,
             block_index=parse_config_int(item.get("block_index"), f"{label}.block_index", required=False),
             locate=locate,
             source_path=resolve_config_path(config_path, optional_config_string(item, "source")),
@@ -893,6 +906,7 @@ def generate_tpu_values_report(
                 tpu_path=spec.tpu_path,
                 size=spec.size,
                 code_offset=spec.code_offset,
+                block_offset=spec.block_offset,
                 block_index=spec.block_index,
                 function_name=spec.function_name,
                 locate=spec.locate,

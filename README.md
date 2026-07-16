@@ -293,6 +293,8 @@ against the unit's symbol table. This is robust to source reordering, forward
 declarations, and compiler-emitted helper blocks, and a missing name or a
 truncated `.TPU` produces a clear error instead of a silent mismatch. Set
 `block_index` instead to pin a specific block when name resolution can't apply.
+For a routine block with leading embedded data, `block_offset` skips that many
+bytes within the selected block while preserving block-relative fixup masking.
 
 `binary-comp values` also understands `dos16-tpu` targets. The `report`
 similarity score matches instruction *types* only, so a block with the right

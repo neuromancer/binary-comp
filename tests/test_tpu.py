@@ -13,6 +13,7 @@ from binary_comp.analyzers.tpu import (
     compare_tpu_spec,
     compare_tpu_to_original,
     generate_tpu_similarity_report,
+    generate_tpu_values_report,
     load_tpu_object,
     parse_code_symbols,
 )
@@ -150,6 +151,30 @@ def test_tpu_block_selection_and_absolute_fixup_offset(tmp_path):
     )
     assert comparison.code_offset == 5
     assert comparison.rebuilt == FAR_CALL
+    assert comparison.matches
+
+
+def test_tpu_block_selection_supports_intra_block_offset(tmp_path):
+    prefix = bytes.fromhex("de ad be ef")
+    prefixed_call = prefix + FAR_CALL
+    prefixed_fixup = (0, 0x30, 0, 0, len(prefix) + 1)
+    tpu = tmp_path / "unit.tpu"
+    tpu.write_bytes(make_tpu([(prefixed_call, [prefixed_fixup])]))
+
+    original = tmp_path / "original.bin"
+    original.write_bytes(bytes.fromhex("9a 78 56 34 12 cb"))
+    comparison = compare_tpu_to_original(
+        original_path=original,
+        original_offset=0,
+        tpu_path=tpu,
+        block_index=0,
+        block_offset=len(prefix),
+        name="block_tail",
+    )
+
+    assert comparison.code_offset == len(prefix)
+    assert comparison.rebuilt == FAR_CALL
+    assert comparison.mask == bytes.fromhex("ff 00 00 00 00 ff")
     assert comparison.matches
 
 
@@ -358,7 +383,9 @@ def test_tpu_report_reads_config_entries(tmp_path):
     original = tmp_path / "original.bin"
     original.write_bytes(bytes.fromhex("9a 78 56 34 12 cb"))
     tpu = tmp_path / "unit.tpu"
-    tpu.write_bytes(make_tpu([(FAR_CALL, [POINTER_FIXUP])]))
+    prefix = bytes.fromhex("90 90")
+    prefixed_fixup = (0, 0x30, 0, 0, len(prefix) + 1)
+    tpu.write_bytes(make_tpu([(prefix + FAR_CALL, [prefixed_fixup])]))
 
     config_path = config_dir / "binary-comp.json"
     config = {
@@ -372,6 +399,8 @@ def test_tpu_report_reads_config_entries(tmp_path):
                     "original": "../original.bin",
                     "original_offset": "0x0",
                     "tpu": "../unit.tpu",
+                    "block_index": 0,
+                    "block_offset": "0x2",
                     "size": "0x6",
                 }
             ]
@@ -400,6 +429,16 @@ def test_tpu_report_reads_config_entries(tmp_path):
     assert "=== CALLER.PAS ===" in text
     assert "caller" in text
     assert "Average similarity: 100.00%" in text
+
+    values = generate_tpu_values_report(
+        config,
+        config_path,
+        target,
+        SimilarityReportOptions(build=False),
+    )
+    assert values.compared == 1
+    assert values.byte_exact == 1
+    assert values.with_diffs == 0
 
 
 def test_tpu_values_check_flags_constant_that_mnemonic_score_misses(tmp_path):
