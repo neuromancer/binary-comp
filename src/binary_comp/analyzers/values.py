@@ -14,6 +14,7 @@ from binary_comp.core.disasm import (
     Instruction,
     Operand,
     disassemble_x86,
+    full_register_name,
     has_msvc_seh_frame,
     is_branch_or_call,
     unsigned32,
@@ -874,6 +875,121 @@ def different_following_call(
     return c_sig is not None and o_sig is not None and c_sig != o_sig
 
 
+def stack_argument_origin_at(
+    instrs: list[Instruction],
+    idx: int,
+    register: str,
+) -> int | None:
+    """Resolve a directly forwarded register to its entry-stack argument.
+
+    The returned offset is relative to ESP on function entry, so the first
+    32-bit argument is 4 and the second is 8.  Stop at calls because their
+    cleanup convention cannot be inferred reliably from a local instruction
+    window.  This intentionally follows only direct moves: arithmetic-derived
+    values are not safe to compare as argument identities.
+    """
+    stack_delta = 0
+    frame_delta: int | None = None
+    origins: dict[str, int] = {}
+
+    for instr in instrs[:idx]:
+        if instr.mnemonic == "call":
+            return None
+
+        operands = instr.operands
+        if instr.mnemonic == "mov" and len(operands) >= 2:
+            dst, src = operands[0], operands[1]
+            if dst.kind == "reg":
+                dst_reg = full_register_name(dst.reg)
+                src_reg = full_register_name(src.reg) if src.kind == "reg" else None
+
+                if dst_reg == "ebp" and src_reg == "esp":
+                    frame_delta = stack_delta
+                    origins.pop(dst_reg, None)
+                elif dst_reg == "esp" and src_reg == "ebp":
+                    if frame_delta is None:
+                        return None
+                    stack_delta = frame_delta
+                    origins.pop(dst_reg, None)
+                else:
+                    origin = None
+                    if src.kind == "reg":
+                        origin = origins.get(src_reg)
+                    elif src.kind == "mem" and not src.index:
+                        base = full_register_name(src.base)
+                        if base == "esp":
+                            origin = stack_delta + src.disp
+                        elif base == "ebp" and frame_delta is not None:
+                            origin = frame_delta + src.disp
+
+                    if origin is not None and origin >= 4:
+                        origins[dst_reg] = origin
+                    else:
+                        origins.pop(dst_reg, None)
+        elif operands and operands[0].kind == "reg":
+            written = full_register_name(operands[0].reg)
+            if instr.mnemonic in {
+                "pop", "lea", "add", "sub", "xor", "or", "and", "imul",
+                "shl", "shr", "sar", "inc", "dec", "movzx", "movsx",
+            }:
+                origins.pop(written, None)
+
+        if instr.mnemonic == "push":
+            stack_delta -= 4
+        elif instr.mnemonic == "pop":
+            stack_delta += 4
+        elif instr.mnemonic in {"add", "sub"} and len(operands) >= 2:
+            dst, src = operands[0], operands[1]
+            if (
+                dst.kind == "reg"
+                and full_register_name(dst.reg) == "esp"
+                and src.kind == "imm"
+            ):
+                stack_delta += src.imm if instr.mnemonic == "add" else -src.imm
+        elif instr.mnemonic in {"enter", "leave", "pushal", "popal"}:
+            return None
+
+    return origins.get(full_register_name(register))
+
+
+def report_stack_argument_origin_mismatch(
+    compiled_instrs: list[Instruction],
+    original_instrs: list[Instruction],
+    ci: int,
+    oi: int,
+    context: CompareContext,
+) -> tuple | None:
+    if "offsets" not in context.enabled_kinds:
+        return None
+
+    compiled = compiled_instrs[ci]
+    original = original_instrs[oi]
+    if compiled.mnemonic != "push" or original.mnemonic != "push":
+        return None
+    if len(compiled.operands) != 1 or len(original.operands) != 1:
+        return None
+
+    c_op = compiled.operands[0]
+    o_op = original.operands[0]
+    if c_op.kind != "reg" or o_op.kind != "reg":
+        return None
+
+    c_call = following_call_signature(
+        compiled_instrs, ci, direct_targets=context.compiled_call_targets
+    )
+    o_call = following_call_signature(
+        original_instrs, oi, direct_targets=context.original_call_targets
+    )
+    if c_call is None or o_call is None or c_call != o_call:
+        return None
+
+    c_origin = stack_argument_origin_at(compiled_instrs, ci, c_op.reg)
+    o_origin = stack_argument_origin_at(original_instrs, oi, o_op.reg)
+    if c_origin is None or o_origin is None or c_origin == o_origin:
+        return None
+    return ("arg", c_origin, o_origin, compiled, original)
+
+
 def report_string_mismatch(
     compiled_instrs: list[Instruction],
     original_instrs: list[Instruction],
@@ -930,6 +1046,11 @@ def compare_instruction_pair(
         return warnings
     if not should_compare_values(compiled, original, context):
         return warnings
+    argument_warning = report_stack_argument_origin_mismatch(
+        compiled_instrs, original_instrs, ci, oi, context
+    )
+    if argument_warning is not None:
+        warnings.append(argument_warning)
     if not comparable_operands(compiled, original):
         return warnings
     if compiled.mnemonic == "push" and different_following_call(
@@ -1130,11 +1251,17 @@ def format_warning(warning: tuple) -> str:
             f"0x{compiled.address:08X} {compiled.raw}  |  "
             f"0x{original.address:08X} {original.raw}"
         )
+    if kind == "arg":
+        return (
+            f"    ARG STACK+0x{compiled_value:X} vs STACK+0x{original_value:X}: "
+            f"0x{compiled.address:08X} {compiled.raw}  |  "
+            f"0x{original.address:08X} {original.raw}"
+        )
     return str(warning)
 
 
 def warning_kind_counts(warnings: tuple) -> dict[str, int]:
-    counts = {"imm": 0, "string": 0, "offset": 0, "branch": 0}
+    counts = {"imm": 0, "string": 0, "offset": 0, "branch": 0, "arg": 0}
     for warning in warnings:
         if not warning:
             continue
@@ -1144,7 +1271,13 @@ def warning_kind_counts(warnings: tuple) -> dict[str, int]:
 
 
 def format_kind_counts(counts: dict[str, int]) -> str:
-    labels = (("imm", "IMM"), ("string", "STRING"), ("offset", "OFFSET"), ("branch", "BRANCH"))
+    labels = (
+        ("imm", "IMM"),
+        ("string", "STRING"),
+        ("offset", "OFFSET"),
+        ("branch", "BRANCH"),
+        ("arg", "ARG"),
+    )
     parts = [f"{label} {counts[kind]}" for kind, label in labels if counts.get(kind, 0)]
     return ", ".join(parts) if parts else "none"
 
