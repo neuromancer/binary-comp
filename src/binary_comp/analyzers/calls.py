@@ -13,6 +13,7 @@ from typing import Any
 
 from binary_comp.config import ConfigError, ProjectTarget, parse_int
 from binary_comp.core.disasm import Instruction, disassemble_reachable_x86, unsigned32
+from binary_comp.core.mapfile import parse_msvc_map_symbols
 from binary_comp.core.pe import PEImage
 from binary_comp.core.symbols import decode_msvc_pointer_class_tokens, normalize_compiled
 from binary_comp.source.cpp import parse_source_function_groups, parse_source_function_markers
@@ -80,6 +81,7 @@ class SourceAddressMarker:
     function_name: str
     source_path: str
     line: int
+    occurrence_index: int
 
 
 @dataclass(frozen=True)
@@ -193,17 +195,26 @@ def iter_source_address_names(target: ProjectTarget, policy: CallsPolicy):
 def collect_source_address_markers(target: ProjectTarget, policy: CallsPolicy) -> dict[int, list[SourceAddressMarker]]:
     markers_by_addr: dict[int, list[SourceAddressMarker]] = {}
     for cpp_file in iter_cpp_files(target.source_dirs, target.map_skip, target.source_excludes):
+        occurrence_counts: dict[str, int] = {}
+        previous_group: tuple[int, str] | None = None
+        occurrence_index = 0
         for marker in parse_source_function_markers(
             cpp_file,
             include_no_assembly=True,
             signature_names=policy.signature_overloads,
         ):
+            group = (marker.function_start, marker.name)
+            if group != previous_group:
+                occurrence_index = occurrence_counts.get(marker.name, 0)
+                occurrence_counts[marker.name] = occurrence_index + 1
+                previous_group = group
             addr = int(marker.address, 16)
             markers_by_addr.setdefault(addr, []).append(SourceAddressMarker(
                 address=addr,
                 function_name=marker.name,
                 source_path=cpp_file,
                 line=marker.line,
+                occurrence_index=occurrence_index,
             ))
     return markers_by_addr
 
@@ -275,6 +286,146 @@ def collect_source_address_issues(target: ProjectTarget, policy: CallsPolicy) ->
                 ))
 
     return issues
+
+
+def compiled_instruction_fingerprint(
+    asm_path: str,
+    function_name: str,
+    occurrence_index: int,
+    signature_names: frozenset[str],
+) -> tuple[str, ...]:
+    """Normalized compiler-listing instructions for exact alias validation.
+
+    ICF aliases legitimately give several source functions one original
+    address.  The final map only retains all names when the rebuilt linker also
+    selects each COMDAT, so use the pre-link assembly listing as a fallback.
+    Operand values remain in the fingerprint; only source-local stack names and
+    generated jump-label numbers are normalized.
+    """
+    try:
+        with open(asm_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+    except OSError:
+        return ()
+
+    body: list[str] = []
+    current_index = -1
+    in_function = False
+    for line in lines:
+        stripped = line.strip()
+        if not in_function:
+            if "PROC" not in stripped:
+                continue
+            matched = False
+            if "; " in stripped:
+                comment = stripped.split("; ", 1)[1].strip()
+                if comment.endswith(", COMDAT"):
+                    comment = comment[:-len(", COMDAT")].strip()
+                matched = comment == function_name
+            if not matched:
+                symbol = stripped.split(None, 1)[0]
+                matched = normalize_compiled(symbol, signature_names) == function_name
+            if not matched:
+                continue
+            current_index += 1
+            if current_index != occurrence_index:
+                continue
+            in_function = True
+            continue
+
+        if re.match(r"\S+\s+ENDS\b", stripped, re.IGNORECASE):
+            break
+        if re.search(r"\bENDP\b", stripped):
+            break
+        code = stripped.split(";", 1)[0].strip()
+        if not code or code.endswith(":"):
+            continue
+        if re.search(r"\b(SEGMENT|ENDS|END|PROC|ENDP|PUBLIC|EXTRN|COMDAT)\b", code):
+            continue
+        if "=" in code and not code.lower().startswith(("cmp", "test")):
+            continue
+        mnemonic = code.split(None, 1)[0].lower()
+        if mnemonic in {"db", "dd", "dq", "dt", "dw", "npad", ".fpo"}:
+            continue
+        body.append(code)
+
+    if not body:
+        return ()
+
+    labels: dict[str, str] = {}
+
+    def replace_label(match: re.Match[str]) -> str:
+        label = match.group(0).lower()
+        return labels.setdefault(label, f"$label{len(labels)}")
+
+    fingerprint = []
+    for code in body:
+        code = re.sub(r"\$L\d+", replace_label, code, flags=re.IGNORECASE)
+        code = re.sub(r"\b[_A-Za-z][\w@?]*\$(?=\[)", "$stack", code)
+        code = re.sub(r"\s+", " ", code).strip().lower()
+        fingerprint.append(code)
+    return tuple(fingerprint)
+
+
+def rebuilt_function_addresses(target: ProjectTarget, policy: CallsPolicy) -> dict[str, set[int]]:
+    addresses: dict[str, set[int]] = {}
+    for symbol in parse_msvc_map_symbols(target.map_path):
+        if symbol.segment != 1 or not symbol.is_function:
+            continue
+        name = normalize_compiled(symbol.symbol, policy.signature_overloads)
+        addresses.setdefault(name, set()).add(symbol.va)
+    return addresses
+
+
+def markers_are_proven_aliases(
+    markers: list[SourceAddressMarker],
+    target: ProjectTarget,
+    policy: CallsPolicy,
+    addresses_by_name: dict[str, set[int]],
+) -> bool:
+    if len(markers) < 2:
+        return False
+
+    rebuilt_sets = [addresses_by_name.get(marker.function_name, set()) for marker in markers]
+    if all(rebuilt_sets) and set.intersection(*rebuilt_sets):
+        return True
+
+    fingerprints = []
+    for marker in markers:
+        if not target.asm_dir:
+            return False
+        asm_path = os.path.join(
+            target.asm_dir,
+            os.path.splitext(os.path.basename(marker.source_path))[0] + ".asm",
+        )
+        fingerprint = compiled_instruction_fingerprint(
+            asm_path,
+            marker.function_name,
+            marker.occurrence_index,
+            policy.signature_overloads,
+        )
+        if not fingerprint:
+            return False
+        fingerprints.append(fingerprint)
+    return len(set(fingerprints)) == 1
+
+
+def filter_proven_source_aliases(
+    issues: dict[int, list[SourceAddressIssue]],
+    target: ProjectTarget,
+    policy: CallsPolicy,
+) -> dict[int, list[SourceAddressIssue]]:
+    """Drop address warnings only when rebuilt code proves an ICF alias."""
+    markers_by_addr = collect_source_address_markers(target, policy)
+    addresses_by_name = rebuilt_function_addresses(target, policy)
+    filtered: dict[int, list[SourceAddressIssue]] = {}
+    for addr, address_issues in issues.items():
+        if any(issue.kind == "duplicate" for issue in address_issues):
+            markers = markers_by_addr.get(addr, [])
+            if markers_are_proven_aliases(markers, target, policy, addresses_by_name):
+                continue
+        filtered[addr] = address_issues
+    return filtered
 
 
 def build_same_address_aliases(target: ProjectTarget, policy: CallsPolicy) -> dict[str, str]:
@@ -1006,7 +1157,11 @@ def check_calls(config: dict[str, Any], target: ProjectTarget, options: CallsOpt
     IAT_ADDRESSES.update(policy.iat_addresses)
 
     addr_map = build_address_to_name_map(target, policy)
-    source_address_issues = collect_source_address_issues(target, policy)
+    source_address_issues = filter_proven_source_aliases(
+        collect_source_address_issues(target, policy),
+        target,
+        policy,
+    )
     source_issue_callers: dict[int, set[str]] = {}
     named_addr_map = auto_detect_named_functions(target.code_dir) if target.code_dir else {}
     original_image = None

@@ -15,6 +15,7 @@ from binary_comp.analyzers.calls import (
     extract_calls_from_compiled,
     extract_calls_from_original,
     extract_calls_from_original_instructions,
+    filter_proven_source_aliases,
     format_calls_summary,
     load_calls_policy,
     merge_call_lists_max,
@@ -150,6 +151,98 @@ def test_call_source_address_issues_report_duplicate_markers(tmp_path):
 
     assert 0x401000 in issues
     assert any(issue.kind == "duplicate" for issue in issues[0x401000])
+
+
+def test_call_source_address_issues_suppress_proven_asm_aliases(tmp_path):
+    source_dir = tmp_path / "src"
+    asm_dir = tmp_path / "out"
+    source_dir.mkdir()
+    asm_dir.mkdir()
+    (source_dir / "a.cpp").write_text(
+        "/* Function start: 0x00401000 */\nint Alpha() { return 0; }\n",
+        encoding="utf-8",
+    )
+    (source_dir / "b.cpp").write_text(
+        "/* Function start: 0x00401000 */\nint Beta() { return 0; }\n",
+        encoding="utf-8",
+    )
+    (asm_dir / "a.asm").write_text(
+        "?Alpha@@YAHXZ PROC NEAR ; Alpha, COMDAT\n"
+        "    xor eax, eax\n"
+        "    ret 0\n"
+        "?Alpha@@YAHXZ ENDP\n",
+        encoding="utf-8",
+    )
+    (asm_dir / "b.asm").write_text(
+        "?Beta@@YAHXZ PROC NEAR ; Beta, COMDAT\n"
+        "    xor eax, eax\n"
+        "    ret 0\n"
+        "?Beta@@YAHXZ ENDP\n",
+        encoding="utf-8",
+    )
+    target = ProjectTarget(
+        name="full",
+        original_exe="",
+        rebuilt_exe="",
+        map_path="",
+        source_dirs=(str(source_dir),),
+        asm_dir=str(asm_dir),
+    )
+    policy = load_calls_policy({})
+
+    issues = filter_proven_source_aliases(
+        collect_source_address_issues(target, policy),
+        target,
+        policy,
+    )
+
+    assert 0x401000 not in issues
+
+
+def test_call_source_address_issues_keep_different_asm_bodies(tmp_path):
+    source_dir = tmp_path / "src"
+    asm_dir = tmp_path / "out"
+    source_dir.mkdir()
+    asm_dir.mkdir()
+    (source_dir / "a.cpp").write_text(
+        "/* Function start: 0x00401000 */\nint Alpha() { return 0; }\n",
+        encoding="utf-8",
+    )
+    (source_dir / "b.cpp").write_text(
+        "/* Function start: 0x00401000 */\nint Beta() { return 1; }\n",
+        encoding="utf-8",
+    )
+    (asm_dir / "a.asm").write_text(
+        "?Alpha@@YAHXZ PROC NEAR ; Alpha, COMDAT\n"
+        "    xor eax, eax\n"
+        "    ret 0\n"
+        "?Alpha@@YAHXZ ENDP\n",
+        encoding="utf-8",
+    )
+    (asm_dir / "b.asm").write_text(
+        "?Beta@@YAHXZ PROC NEAR ; Beta, COMDAT\n"
+        "    mov eax, 1\n"
+        "    ret 0\n"
+        "?Beta@@YAHXZ ENDP\n",
+        encoding="utf-8",
+    )
+    target = ProjectTarget(
+        name="full",
+        original_exe="",
+        rebuilt_exe="",
+        map_path="",
+        source_dirs=(str(source_dir),),
+        asm_dir=str(asm_dir),
+    )
+    policy = load_calls_policy({})
+
+    issues = filter_proven_source_aliases(
+        collect_source_address_issues(target, policy),
+        target,
+        policy,
+    )
+
+    assert 0x401000 in issues
 
 
 def test_call_source_address_issues_report_address_islands(tmp_path):
