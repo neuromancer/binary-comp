@@ -31,6 +31,15 @@ def make_proc_symbol(name: str, order_key: int) -> bytes:
     return bytes([0x53, len(raw)]) + raw + b"\x00" * 6 + struct.pack("<H", order_key)
 
 
+def make_tpu5_code_symbol(
+    name: str, order_key: int, *, function: bool = False
+) -> bytes:
+    """A TPU5 code symbol: length-prefixed name, kind, then attributes."""
+    raw = name.encode("ascii")
+    kind = 0x55 if function else 0x54
+    return bytes([len(raw)]) + raw + bytes([kind]) + b"\x00" * 5 + struct.pack("<H", order_key)
+
+
 def make_tpu(blocks, *, const: bytes = b"", symbols: bytes = b"") -> bytes:
     """Assemble a minimal but valid TPU9 unit.
 
@@ -74,6 +83,40 @@ def make_tpu(blocks, *, const: bytes = b"", symbols: bytes = b"") -> bytes:
     return bytes(out)
 
 
+def make_tpu5(
+    blocks, *, const: bytes = b"", symbols: bytes = b"", flags: int = 0
+) -> bytes:
+    """Assemble a minimal TPU5 unit using TP5's code/reloc/const order."""
+    ofs_code_blocks = 0x40 + len(symbols)
+    ofs_const_blocks = ofs_code_blocks + 8 * len(blocks)
+    sym_size = ofs_const_blocks
+    code = b"".join(code for code, _ in blocks)
+    reloc = b"".join(
+        struct.pack("<BBHHH", *rec) for _, relocs in blocks for rec in relocs
+    )
+
+    header = bytearray(0x40)
+    header[0:4] = b"TPU5"
+    struct.pack_into("<H", header, 0x0C, ofs_code_blocks)
+    struct.pack_into("<H", header, 0x0E, ofs_const_blocks)
+    struct.pack_into("<H", header, 0x18, sym_size)
+    struct.pack_into("<H", header, 0x1A, len(code))
+    struct.pack_into("<H", header, 0x1C, len(reloc))
+    struct.pack_into("<H", header, 0x1E, len(const))
+    struct.pack_into("<H", header, 0x24, flags)
+
+    block_table = bytearray()
+    for code_bytes, relocs in blocks:
+        block_table += struct.pack("<4H", 0, len(code_bytes), 8 * len(relocs), 0xFFFF)
+
+    out = bytearray(bytes(header) + symbols + bytes(block_table))
+    out = bytearray(bytes(out).ljust(_roundup(sym_size), b"\x00"))
+    out += code.ljust(_roundup(len(code)), b"\x00")
+    out += reloc.ljust(_roundup(len(reloc)), b"\x00")
+    out += const.ljust(_roundup(len(const)), b"\x00")
+    return bytes(out)
+
+
 # A far call whose 4-byte pointer operand is a link-time fixup, followed by retf.
 FAR_CALL = bytes.fromhex("9a 00 00 00 00 cb")
 POINTER_FIXUP = (0, 0x30, 0, 0, 1)  # pointer(ref=3)/code(tgt=0), patch 4 bytes at offset 1
@@ -90,6 +133,33 @@ def test_tpu_parser_reads_header_code_and_fixups(tmp_path):
     assert len(obj.blocks) == 1
     assert obj.blocks[0].code_offset == 0
     assert [(f.offset, f.length) for f in obj.fixups] == [(1, 4)]
+
+
+def test_tpu5_parser_reads_header_sections_code_and_fixups(tmp_path):
+    typed_const = bytes.fromhex("01 02 03")
+    tpu = tmp_path / "unit.tpu"
+    tpu.write_bytes(
+        make_tpu5([(FAR_CALL, [POINTER_FIXUP])], const=typed_const, flags=2)
+    )
+
+    obj = load_tpu_object(tpu)
+
+    assert obj.header.signature == b"TPU5"
+    assert obj.header.has_overlays
+    assert obj.header.code_size == len(FAR_CALL)
+    assert obj.header.const_size == len(typed_const)
+    assert obj.header.off_code_reloc == obj.header.off_code + _roundup(len(FAR_CALL))
+    assert obj.header.off_const == obj.header.off_code_reloc + _roundup(8)
+    assert obj.code == FAR_CALL
+    assert [(f.offset, f.length) for f in obj.fixups] == [(1, 4)]
+
+
+def test_tpu_rejects_unsupported_signature(tmp_path):
+    tpu = tmp_path / "unit.tpu"
+    tpu.write_bytes(b"TPU6" + bytes(0x40))
+
+    with pytest.raises(TpuCompareError, match="expected b'TPU5' or b'TPU9'"):
+        load_tpu_object(tpu)
 
 
 def test_tpu_compare_masks_fixup_operands(tmp_path):
@@ -205,6 +275,25 @@ def test_name_selection_follows_code_order_not_table_order(tmp_path):
     assert comparison.code_offset == 5
     assert comparison.rebuilt == FAR_CALL
     assert comparison.matches
+
+
+def test_tpu5_name_selection_handles_procedure_and_function_order(tmp_path):
+    private_function = (bytes.fromhex("55 89 e5 5d cb"), [])
+    exported_procedure = (FAR_CALL, [POINTER_FIXUP])
+    # Interface symbols precede private implementation symbols in the table,
+    # while the order key still places the private function's body first.
+    syms = (
+        make_tpu5_code_symbol("EXPORTED", 0x200)
+        + make_tpu5_code_symbol("PRIVATEFN", 0x100, function=True)
+    )
+    tpu = tmp_path / "unit.tpu"
+    tpu.write_bytes(make_tpu5([private_function, exported_procedure], symbols=syms))
+
+    obj = load_tpu_object(tpu)
+
+    assert [s.name for s in obj.code_symbols] == ["PRIVATEFN", "EXPORTED"]
+    assert block_index_for_name(obj, "privatefn") == 0
+    assert block_index_for_name(obj, "EXPORTED") == 1
 
 
 def test_name_selection_unknown_name_lists_available(tmp_path):

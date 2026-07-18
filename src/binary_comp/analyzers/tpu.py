@@ -1,18 +1,25 @@
 """Turbo Pascal / Borland Pascal compiled-unit (.TPU) comparison helpers.
 
-This is the Pascal analog of the OMF helper. It reads a Turbo Pascal 6.0 unit
-file (signature ``TPU9``, also used by Turbo Pascal for Windows 1.0), extracts
-the emitted CODE section together with its relocation fixups, and masks the
-relocated operands before comparing against a raw original byte window. It is
-meant for 16-bit DOS reconstruction projects where the rebuilt artifact is a
-compiled unit and the reference is a linked executable or an overlay code image.
+This is the Pascal analog of the OMF helper. It reads Turbo Pascal 5.0
+(``TPU5``) and Turbo Pascal 6.0 (``TPU9``) units, extracts the emitted CODE
+section together with its relocation fixups, and masks the relocated operands
+before comparing against a raw original byte window. It is meant for 16-bit
+DOS reconstruction projects where the rebuilt artifact is a compiled unit and
+the reference is a linked executable or an overlay code image.
 
 The Turbo Pascal linker fills fixup operands (offsets, segments, and far
 pointers) at link time, so those bytes are zero in the ``.TPU``. Masking them
 lets an unlinked unit be compared against the final linked bytes, exactly the
 way FIXUPP masking works for OMF objects in :mod:`binary_comp.analyzers.omf`.
 
-TPU9 file layout (each section is padded up to a 16-byte paragraph):
+TPU5 file layout (each section is padded up to a 16-byte paragraph):
+
+    symbol section   [0, sym_size)          contains the header and code-block table
+    code section     [.., code_size)        emitted machine code, blocks concatenated
+    code relocations [.., reloc_size)       fixups for the code section
+    const section    [.., const_size)       initialized data
+
+TPU9 file layout:
 
     symbol section   [0, sym_size)          contains the header and code-block table
     code section     [.., code_size)        emitted machine code, blocks concatenated
@@ -22,6 +29,8 @@ TPU9 file layout (each section is padded up to a 16-byte paragraph):
 
 The header, code-block record, and relocation record layouts are documented in
 the community "Inside Turbo Pascal Units" notes and the INTRFC63 TPU dumper.
+The TPU5 field positions and section order are additionally checked against
+units emitted by the original Turbo Pascal 5.0 command-line compiler.
 """
 
 from __future__ import annotations
@@ -42,14 +51,22 @@ from binary_comp.config import ProjectTarget
 from binary_comp.core.disasm import Instruction, disassemble_raw_16
 
 
+TPU5_SIGNATURE = b"TPU5"
 TPU9_SIGNATURE = b"TPU9"
 
-# Header field byte offsets (all 16-bit words).
-_OFS_CODE_BLOCKS = 0x0E
-_OFS_CONST_BLOCKS = 0x10
-_OFS_SIZES = 0x1C  # sym_size, code_size, const_size, reloc_size, vmt_size
-_OFS_FLAGS = 0x2A
-_HEADER_MIN = 0x2C
+# Header field byte offsets (all 16-bit words). TP5 stores code relocations
+# before typed constants; TP6 moves constants ahead of both relocation tables.
+_TPU5_OFS_CODE_BLOCKS = 0x0C
+_TPU5_OFS_CONST_BLOCKS = 0x0E
+_TPU5_OFS_SIZES = 0x18  # sym_size, code_size, reloc_size, const_size
+_TPU5_OFS_FLAGS = 0x24
+_TPU5_HEADER_MIN = 0x26
+
+_TPU9_OFS_CODE_BLOCKS = 0x0E
+_TPU9_OFS_CONST_BLOCKS = 0x10
+_TPU9_OFS_SIZES = 0x1C  # sym_size, code_size, const_size, reloc_size, vmt_size
+_TPU9_OFS_FLAGS = 0x2A
+_TPU9_HEADER_MIN = 0x2C
 
 # A relocation record's ``rtype`` byte encodes how the target is referenced in
 # ``(rtype >> 4) & 3`` and what it targets in ``rtype >> 6``. The reference kind
@@ -65,15 +82,14 @@ _RELOC_RECORD_SIZE = 8
 _BLOCK_RECORD_SIZE = 8
 _COPROC_MARKER = 0xFF  # unit_num == rtype == 0xFF marks an 8087 coprocessor fixup
 
-# Symbol table: each record is [kind:1][name_len:1][name:name_len][attributes...],
-# stored contiguously. The kind byte distinguishes the symbol class; a
-# procedure/function definition is 0x53. Within a procedure record's attributes,
-# a word at this offset past the name is a code-emission-order key (a pointer the
-# compiler assigns in the order routine bodies are laid out). Sorting procedures
-# by that key reproduces the order of the concatenated code blocks, even when a
-# routine was forward-declared — its symbol then appears at the earlier
-# declaration site in the table, but the key still reflects where its body lands.
-_SYM_KIND_PROC = 0x53
+# TP6 symbol records begin [kind][name_len][name], with kind 0x53 for both
+# procedures and functions. TP5 stores [name_len][name][kind], using 0x54 for a
+# procedure and 0x55 for a function. In both formats a word at this offset past
+# the name is a code-emission-order key (a pointer the compiler assigns in the
+# order routine bodies are laid out). Sorting by that key reproduces the order
+# of the concatenated code blocks even when a routine was forward-declared.
+_TPU9_SYM_KIND_PROC = 0x53
+_TPU5_SYM_KINDS_CODE = frozenset((0x54, 0x55))
 _SYM_ORDER_KEY_OFFSET = 6
 _SYM_NAME_MAX = 63  # Turbo Pascal identifiers are <= 63 chars
 
@@ -84,6 +100,7 @@ class TpuCompareError(RuntimeError):
 
 @dataclass(frozen=True)
 class TpuHeader:
+    signature: bytes
     ofs_code_blocks: int
     ofs_const_blocks: int
     sym_size: int
@@ -199,22 +216,49 @@ def _roundup_paragraph(value: int) -> int:
 
 
 def parse_tpu_header(data: bytes) -> TpuHeader:
-    if len(data) < _HEADER_MIN:
+    if len(data) < 4:
         raise TpuCompareError("file too small to be a TPU unit")
-    if data[:4] != TPU9_SIGNATURE:
-        raise TpuCompareError(
-            f"not a Turbo Pascal 6.0 (TPU9) unit: signature {data[:4]!r}"
+    signature = data[:4]
+    if signature == TPU5_SIGNATURE:
+        if len(data) < _TPU5_HEADER_MIN:
+            raise TpuCompareError("file too small to contain a TPU5 header")
+        ofs_code_blocks, ofs_const_blocks = struct.unpack_from(
+            "<2H", data, _TPU5_OFS_CODE_BLOCKS
         )
-    ofs_code_blocks, ofs_const_blocks = struct.unpack_from("<2H", data, _OFS_CODE_BLOCKS)
-    sym_size, code_size, const_size, reloc_size, vmt_size = struct.unpack_from("<5H", data, _OFS_SIZES)
-    flags = struct.unpack_from("<H", data, _OFS_FLAGS)[0]
+        sym_size, code_size, reloc_size, const_size = struct.unpack_from(
+            "<4H", data, _TPU5_OFS_SIZES
+        )
+        vmt_size = 0
+        flags = struct.unpack_from("<H", data, _TPU5_OFS_FLAGS)[0]
 
-    off_code = _roundup_paragraph(sym_size)
-    off_const = off_code + _roundup_paragraph(code_size)
-    off_code_reloc = off_const + _roundup_paragraph(const_size)
-    off_const_reloc = off_code_reloc + _roundup_paragraph(reloc_size)
-    total_size = off_const_reloc + _roundup_paragraph(vmt_size)
+        off_code = _roundup_paragraph(sym_size)
+        off_code_reloc = off_code + _roundup_paragraph(code_size)
+        off_const = off_code_reloc + _roundup_paragraph(reloc_size)
+        off_const_reloc = off_const + _roundup_paragraph(const_size)
+        total_size = off_const_reloc
+    elif signature == TPU9_SIGNATURE:
+        if len(data) < _TPU9_HEADER_MIN:
+            raise TpuCompareError("file too small to contain a TPU9 header")
+        ofs_code_blocks, ofs_const_blocks = struct.unpack_from(
+            "<2H", data, _TPU9_OFS_CODE_BLOCKS
+        )
+        sym_size, code_size, const_size, reloc_size, vmt_size = struct.unpack_from(
+            "<5H", data, _TPU9_OFS_SIZES
+        )
+        flags = struct.unpack_from("<H", data, _TPU9_OFS_FLAGS)[0]
+
+        off_code = _roundup_paragraph(sym_size)
+        off_const = off_code + _roundup_paragraph(code_size)
+        off_code_reloc = off_const + _roundup_paragraph(const_size)
+        off_const_reloc = off_code_reloc + _roundup_paragraph(reloc_size)
+        total_size = off_const_reloc + _roundup_paragraph(vmt_size)
+    else:
+        raise TpuCompareError(
+            f"unsupported Turbo Pascal unit signature {signature!r}; "
+            f"expected {TPU5_SIGNATURE!r} or {TPU9_SIGNATURE!r}"
+        )
     return TpuHeader(
+        signature=signature,
         ofs_code_blocks=ofs_code_blocks,
         ofs_const_blocks=ofs_const_blocks,
         sym_size=sym_size,
@@ -307,25 +351,13 @@ def _is_identifier_bytes(raw: bytes) -> bool:
     return all(65 <= b <= 90 or 48 <= b <= 57 or b == 0x5F for b in raw)
 
 
-def parse_code_symbols(data: bytes, header: TpuHeader) -> tuple[TpuCodeSymbol, ...]:
-    """Extract procedure/function symbols from the TPU symbol table, in code order.
-
-    The symbol section holds variable-length records; a procedure record starts
-    with the kind byte 0x53 followed by a length-prefixed name and attributes.
-    Records are scanned for that shape (a valid length-prefixed identifier), then
-    sorted by the code-order key in the attributes so the result lines up 1:1
-    with :func:`_parse_code_blocks` output (which is in code-emission order).
-
-    This is what lets a comparison select a code block by *name* instead of by a
-    fragile source-order index: forward declarations, reordered routines, or
-    compiler-emitted helpers no longer shift the mapping.
-    """
+def _parse_tpu9_code_symbols(data: bytes, header: TpuHeader) -> list[TpuCodeSymbol]:
     limit = min(header.ofs_code_blocks, header.sym_size, len(data))
     found: list[TpuCodeSymbol] = []
     seen: set[str] = set()
-    cursor = _HEADER_MIN
+    cursor = _TPU9_HEADER_MIN
     while cursor + 2 < limit:
-        if data[cursor] != _SYM_KIND_PROC:
+        if data[cursor] != _TPU9_SYM_KIND_PROC:
             cursor += 1
             continue
         name_len = data[cursor + 1]
@@ -345,6 +377,49 @@ def parse_code_symbols(data: bytes, header: TpuHeader) -> tuple[TpuCodeSymbol, .
             seen.add(name)
             found.append(TpuCodeSymbol(name=name, order_key=order_key, table_offset=cursor))
         cursor = name_end  # skip the name; attributes are re-scanned harmlessly
+    return found
+
+
+def _parse_tpu5_code_symbols(data: bytes, header: TpuHeader) -> list[TpuCodeSymbol]:
+    limit = min(header.ofs_code_blocks, header.sym_size, len(data))
+    found: list[TpuCodeSymbol] = []
+    seen: set[str] = set()
+    cursor = _TPU5_HEADER_MIN
+    while cursor + 2 < limit:
+        name_len = data[cursor]
+        name_start = cursor + 1
+        name_end = name_start + name_len
+        attr_end = name_end + _SYM_ORDER_KEY_OFFSET + 2
+        if not (1 <= name_len <= _SYM_NAME_MAX) or attr_end > limit:
+            cursor += 1
+            continue
+        raw = data[name_start:name_end]
+        if (
+            not _is_identifier_bytes(raw)
+            or data[name_end] not in _TPU5_SYM_KINDS_CODE
+        ):
+            cursor += 1
+            continue
+        name = raw.decode("ascii")
+        order_key = struct.unpack_from("<H", data, name_end + _SYM_ORDER_KEY_OFFSET)[0]
+        if name not in seen:
+            seen.add(name)
+            found.append(TpuCodeSymbol(name=name, order_key=order_key, table_offset=cursor))
+        cursor = name_end + 1
+    return found
+
+
+def parse_code_symbols(data: bytes, header: TpuHeader) -> tuple[TpuCodeSymbol, ...]:
+    """Extract procedure/function symbols from the TPU symbol table, in code order.
+
+    TPU5 and TPU9 encode symbol kinds on opposite sides of the identifier. Both
+    carry a code-order key in the following attributes, so name-based block
+    selection remains stable across forward declarations and private routines.
+    """
+    if header.signature == TPU5_SIGNATURE:
+        found = _parse_tpu5_code_symbols(data, header)
+    else:
+        found = _parse_tpu9_code_symbols(data, header)
     found.sort(key=lambda s: s.order_key)
     return tuple(found)
 
@@ -354,8 +429,10 @@ def load_tpu_object(path: str | Path) -> TpuObject:
     header = parse_tpu_header(data)
     # A standalone .TPU is exactly total_size bytes; units read out of a .TPL are
     # concatenated, so only require that this unit's sections fit in the file.
-    if header.off_code + header.code_size > len(data):
-        raise TpuCompareError("code section extends past end of file")
+    if header.total_size > len(data):
+        raise TpuCompareError(
+            f"TPU sections require {header.total_size} bytes but file has {len(data)}"
+        )
     code = data[header.off_code:header.off_code + header.code_size]
     blocks = _parse_code_blocks(data, header)
     fixups, coproc = _parse_fixups(data, header, blocks)

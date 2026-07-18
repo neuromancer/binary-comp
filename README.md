@@ -261,13 +261,14 @@ relocation operands, which is useful for early Borland C/C++ matching before
 the RTLink/link step is modeled.
 
 `binary-comp tpu-compare` is the Turbo Pascal / Borland Pascal counterpart for
-projects whose rebuilt artifact is a compiled unit. It reads a Turbo Pascal 6.0
-`.TPU` file (signature `TPU9`, also used by Turbo Pascal for Windows 1.0),
-extracts the emitted CODE section, and masks the relocation operands that the
-linker fills in (16-bit offsets, segments, and far pointers) before comparing
-against a raw original byte window. Because Turbo Pascal emits one code block
-per routine, `--block N` compares a single routine directly; alternatively
-`--code-offset`/`--size` select an explicit window. When the routine's exact
+projects whose rebuilt artifact is a compiled unit. It reads Turbo Pascal 5.0
+(`TPU5`) and Turbo Pascal 6.0 (`TPU9`, also used by Turbo Pascal for Windows
+1.0) `.TPU` files, extracts the emitted CODE section, and masks the relocation
+operands that the linker fills in (16-bit offsets, segments, and far pointers)
+before comparing against a raw original byte window. Because Turbo Pascal
+emits one code block per routine, `--block N` compares a single routine
+directly; alternatively `--code-offset`/`--size` select an explicit window.
+When the routine's exact
 offset in the original is unknown — e.g. a routine inside a Turbo Pascal overlay
 (`.OVR`) image, which is a flat concatenation of linked code — `--locate`
 searches the image for the block by content (masking the block's own fixups) and
