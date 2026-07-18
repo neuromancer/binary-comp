@@ -98,6 +98,7 @@ class ClassReport:
     overrides: int
     implemented: int
     sdtors: int
+    purecalls: int
     stubs: int
     missing_real: int
     symbol_mismatch: int
@@ -1008,6 +1009,24 @@ def is_field_getter(instr: Instruction | None) -> bool:
     return left.kind == "reg" and right.kind == "mem" and left.reg in {"eax", "ax", "al"} and right.base == "ecx"
 
 
+# MSVC's `_purecall` stub is `push 25; call _amsg_exit; add esp,4; ret` -- 25 is
+# _RT_PUREVIRT, the CRT code behind "R6025 - pure virtual function call".  A
+# vtable slot pointing at it means the class declared that method `= 0`, so
+# there is no source function to find and the slot is not a gap in the
+# reconstruction.  Matched structurally rather than by address so the check
+# survives CRT relayout between the original and rebuilt images.
+PURECALL_ERROR_CODE = 25
+
+
+def is_purecall_stub(first: Instruction | None, second: Instruction | None) -> bool:
+    if first is None or first.mnemonic != "push" or not first.operands:
+        return False
+    operand = first.operands[0]
+    if operand.kind != "imm" or unsigned32(operand.imm) != PURECALL_ERROR_CODE:
+        return False
+    return second is not None and second.mnemonic == "call"
+
+
 def classify_function(image: PEImage, starts: list[int], addr: int) -> str:
     instrs = disassemble_function(image, starts, addr, 32)
     if not instrs:
@@ -1029,6 +1048,8 @@ def classify_function(image: PEImage, starts: list[int], addr: int) -> str:
         return "ret1" if ret_constant == 1 else "retconst"
     if is_field_getter(first) and is_ret(second):
         return "fieldget"
+    if is_purecall_stub(first, second):
+        return "purecall"
     if first.mnemonic == "push" and second is not None and second.mnemonic == "call":
         return "error"
     return "real"
@@ -1182,6 +1203,7 @@ def build_class_reports(
         "overrides": 0,
         "implemented": 0,
         "sdtors": 0,
+        "purecalls": 0,
         "stubs": 0,
         "missing_real": 0,
         "symbol_mismatch": 0,
@@ -1225,7 +1247,7 @@ def build_class_reports(
             else:
                 overrides.append((idx, func_addr))
 
-        n_impl = n_sdtor = n_stub_missing = n_real_missing = n_symbol_mismatch = 0
+        n_impl = n_sdtor = n_purecall = n_stub_missing = n_real_missing = n_symbol_mismatch = 0
         missing_real = []
         missing_stubs = []
         symbol_mismatches = []
@@ -1249,6 +1271,8 @@ def build_class_reports(
                     if not matches_expected_symbol(class_name, slot_idx, expected, symbols):
                         n_symbol_mismatch += 1
                         symbol_mismatches.append((slot_idx, func_addr, expected, tuple(symbols), label))
+            elif ftype == "purecall":
+                n_purecall += 1
             elif is_sdtor_slot(slot_idx):
                 n_sdtor += 1
             elif is_trivial_function_type(ftype):
@@ -1291,6 +1315,8 @@ def build_class_reports(
                         status = f"OK <- {', '.join(f'{file}:{line}' for file, line in locs)}"
                     else:
                         status = f"MISMATCH expected {expected['display_name']} got {format_symbol_list(symbols)}"
+                elif ftype == "purecall":
+                    status = "purecall (declared `= 0`)"
                 elif is_sdtor_slot(idx):
                     status = "sdtor (compiler-generated)"
                 elif is_trivial_function_type(ftype):
@@ -1307,6 +1333,7 @@ def build_class_reports(
         totals["overrides"] += len(overrides)
         totals["implemented"] += n_impl
         totals["sdtors"] += n_sdtor
+        totals["purecalls"] += n_purecall
         totals["stubs"] += n_stub_missing
         totals["missing_real"] += n_real_missing
         totals["symbol_mismatch"] += n_symbol_mismatch
@@ -1321,6 +1348,7 @@ def build_class_reports(
             overrides=len(overrides),
             implemented=n_impl,
             sdtors=n_sdtor,
+            purecalls=n_purecall,
             stubs=n_stub_missing,
             missing_real=n_real_missing,
             symbol_mismatch=n_symbol_mismatch,
@@ -1557,6 +1585,7 @@ def format_vtable_summary(summary: VtableSummary, dump: bool = False) -> str:
         f"{'  Overrides:':<30} {summary.totals['overrides']}",
         f"{'    Implemented:':<30} {summary.totals['implemented']}",
         f"{'    Sdtors (compiler):':<30} {summary.totals['sdtors']}",
+        f"{'    Purecalls (= 0):':<30} {summary.totals['purecalls']}",
         f"{'    Trivial helpers/thunks:':<30} {summary.totals['stubs']}",
         f"{'    Missing (real code):':<30} {summary.totals['missing_real']}",
         f"{'    Implemented but wrong slot:':<30} {summary.totals['symbol_mismatch']}",
