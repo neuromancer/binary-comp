@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from binary_comp.analyzers.calls import CallsOptions, check_calls, format_calls_summary
 from binary_comp.analyzers.data import (
@@ -22,6 +23,11 @@ from binary_comp.analyzers.function_compare import (
     FunctionComparer,
     format_comparison as format_function_comparison,
     maybe_build,
+)
+from binary_comp.analyzers.exepack import (
+    ExepackError,
+    format_exepack_summary,
+    unpack_exepack_file,
 )
 from binary_comp.analyzers.seh import (
     compare_function_seh,
@@ -49,9 +55,21 @@ from binary_comp.analyzers.tpu import (
     compare_tpu_config_function,
     compare_tpu_to_original,
     format_tpu_comparison,
+    format_tpu_info,
     format_tpu_values_report,
     generate_tpu_similarity_report,
     generate_tpu_values_report,
+    load_tpu_object,
+)
+from binary_comp.analyzers.tp_overlay import (
+    TpOverlayError,
+    format_tp_overlay,
+    load_tp_overlay,
+)
+from binary_comp.analyzers.tpu_scan import (
+    format_tpu_scan,
+    scan_tpu_directory,
+    write_tpu_scan_json,
 )
 from binary_comp.analyzers.report import (
     SimilarityReportOptions,
@@ -62,6 +80,7 @@ from binary_comp.analyzers.values import ValuesOptions, check_values, format_sum
 from binary_comp.analyzers.vtables import VtableOptions, check_vtables, format_vtable_summary
 from binary_comp.config import ConfigError, DEFAULT_CONFIG_PATH, ProjectTarget, load_project_target
 from binary_comp.source.functions import load_source_groups, map_source_groups
+from binary_comp.core.mz import MzFormatError, format_mz, parse_mz
 
 
 def add_values_parser(subparsers) -> None:
@@ -220,6 +239,62 @@ def add_tpu_compare_parser(subparsers) -> None:
                              "for routines inside a Turbo Pascal overlay (.OVR) image")
     parser.add_argument("--name", default="tpu-function", help="Display name for this comparison")
     parser.set_defaults(handler=run_tpu_compare)
+
+
+def add_mz_info_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "mz-info",
+        help="Validate and describe a 16-bit DOS MZ executable without running it",
+    )
+    parser.add_argument("input", help="DOS MZ executable to inspect")
+    parser.set_defaults(handler=run_mz_info)
+
+
+def add_exepack_unpack_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "exepack-unpack",
+        help="Statically decompress a Microsoft EXEPACK MZ executable",
+    )
+    parser.add_argument("input", help="EXEPACK-compressed MZ input")
+    parser.add_argument("output", help="Path for the recovered canonical MZ file")
+    parser.set_defaults(handler=run_exepack_unpack)
+
+
+def add_tpov_info_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "tpov-info",
+        help="Discover and validate a resident Turbo Pascal TPOV directory",
+    )
+    parser.add_argument("--exe", required=True, help="Associated unpacked MZ executable")
+    parser.add_argument("--overlay", required=True, help="TPOV overlay image")
+    parser.add_argument("--expect-count", type=int, help="Fail unless this many overlay units are found")
+    parser.set_defaults(handler=run_tpov_info)
+
+
+def add_tpu_info_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "tpu-info",
+        help="Describe Turbo Pascal unit sections, code blocks, symbols, and fixups",
+    )
+    parser.add_argument("tpu", help="Compiled Turbo Pascal unit")
+    parser.set_defaults(handler=run_tpu_info)
+
+
+def add_tpu_scan_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "tpu-scan",
+        help="Locate relocation-masked TPU code blocks in resident and TPOV code",
+    )
+    parser.add_argument("--exe", required=True, help="Associated unpacked MZ executable")
+    parser.add_argument("--overlay", required=True, help="TPOV overlay image")
+    parser.add_argument("--tpu-dir", required=True, help="Directory containing compiled .TPU files")
+    parser.add_argument("--function", help="Case-insensitive procedure-name filter")
+    parser.add_argument("--min-block-size", type=int, default=8, help="Minimum code-block size (default: 8)")
+    parser.add_argument("--min-fixed-bytes", type=int, default=8, help="Minimum non-fixup bytes (default: 8)")
+    parser.add_argument("--minimum-unique", type=int, default=0, help="Fail if fewer unique blocks are found")
+    parser.add_argument("--json", dest="json_path", help="Write the complete match inventory as JSON")
+    parser.add_argument("--verbose", action="store_true", help="List every located block")
+    parser.set_defaults(handler=run_tpu_scan)
 
 
 def add_export_asm_parser(subparsers) -> None:
@@ -701,6 +776,75 @@ def run_tpu_compare(args) -> int:
     return 0 if comparison.matches else 1
 
 
+def run_mz_info(args) -> int:
+    try:
+        image = parse_mz(Path(args.input).read_bytes())
+    except (FileNotFoundError, OSError, MzFormatError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(format_mz(image))
+    return 0
+
+
+def run_exepack_unpack(args) -> int:
+    try:
+        result = unpack_exepack_file(args.input, args.output)
+    except (FileNotFoundError, OSError, ExepackError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(format_exepack_summary(result))
+    print(f"  wrote:                {args.output}")
+    return 0
+
+
+def run_tpov_info(args) -> int:
+    try:
+        image = load_tp_overlay(args.exe, args.overlay)
+    except (FileNotFoundError, OSError, TpOverlayError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(format_tp_overlay(image))
+    if args.expect_count is not None and len(image.descriptors) != args.expect_count:
+        print(
+            f"error: found {len(image.descriptors)} overlay units; "
+            f"expected {args.expect_count}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+def run_tpu_info(args) -> int:
+    try:
+        obj = load_tpu_object(args.tpu)
+    except (FileNotFoundError, OSError, TpuCompareError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(format_tpu_info(obj))
+    return 0
+
+
+def run_tpu_scan(args) -> int:
+    try:
+        result = scan_tpu_directory(
+            args.exe,
+            args.overlay,
+            args.tpu_dir,
+            minimum_block_size=args.min_block_size,
+            minimum_fixed_bytes=args.min_fixed_bytes,
+            function_filter=args.function,
+        )
+        if args.json_path:
+            write_tpu_scan_json(result, args.json_path)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(format_tpu_scan(result, verbose=args.verbose))
+    if args.json_path:
+        print(f"wrote {args.json_path}")
+    return 1 if result.unique_count < args.minimum_unique else 0
+
+
 def resolve_cli_path(config_path: str, path: str | None) -> str | None:
     if not path:
         return None
@@ -825,14 +969,19 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_calls_parser(subparsers)
     add_compare_parser(subparsers)
+    add_exepack_unpack_parser(subparsers)
     add_export_asm_parser(subparsers)
     add_seh_parser(subparsers)
     add_data_parser(subparsers)
     add_exe_parser(subparsers)
     add_global_access_parser(subparsers)
     add_globals_parser(subparsers)
+    add_mz_info_parser(subparsers)
     add_omf_compare_parser(subparsers)
+    add_tpov_info_parser(subparsers)
     add_tpu_compare_parser(subparsers)
+    add_tpu_info_parser(subparsers)
+    add_tpu_scan_parser(subparsers)
     add_report_parser(subparsers)
     add_values_parser(subparsers)
     add_vtables_parser(subparsers)

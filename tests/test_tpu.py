@@ -83,6 +83,37 @@ def make_tpu(blocks, *, const: bytes = b"", symbols: bytes = b"") -> bytes:
     return bytes(out)
 
 
+def make_tpu6(
+    blocks, *, const: bytes = b"", symbols: bytes = b"", flags: int = 0
+) -> bytes:
+    """Assemble a minimal TP5.5 TPU6 unit using its modern section order."""
+    ofs_code_blocks = 0x40 + len(symbols)
+    ofs_const_blocks = ofs_code_blocks + 8 * len(blocks)
+    sym_size = ofs_const_blocks
+    code = b"".join(code for code, _ in blocks)
+    reloc = b"".join(
+        struct.pack("<BBHHH", *rec) for _, relocs in blocks for rec in relocs
+    )
+
+    header = bytearray(0x40)
+    header[0:4] = b"TPU6"
+    struct.pack_into("<H", header, 0x0E, ofs_code_blocks)
+    struct.pack_into("<H", header, 0x10, ofs_const_blocks)
+    struct.pack_into("<5H", header, 0x1A, sym_size, len(code), len(const), len(reloc), 0)
+    struct.pack_into("<H", header, 0x28, flags)
+
+    block_table = bytearray()
+    for code_bytes, relocs in blocks:
+        block_table += struct.pack("<4H", 0, len(code_bytes), 8 * len(relocs), 0xFFFF)
+
+    out = bytearray(bytes(header) + symbols + bytes(block_table))
+    out = bytearray(bytes(out).ljust(_roundup(sym_size), b"\x00"))
+    out += code.ljust(_roundup(len(code)), b"\x00")
+    out += const.ljust(_roundup(len(const)), b"\x00")
+    out += reloc.ljust(_roundup(len(reloc)), b"\x00")
+    return bytes(out)
+
+
 def make_tpu5(
     blocks, *, const: bytes = b"", symbols: bytes = b"", flags: int = 0
 ) -> bytes:
@@ -154,11 +185,37 @@ def test_tpu5_parser_reads_header_sections_code_and_fixups(tmp_path):
     assert [(f.offset, f.length) for f in obj.fixups] == [(1, 4)]
 
 
+def test_tpu6_parser_reads_header_sections_symbols_and_fixups(tmp_path):
+    typed_const = bytes.fromhex("01 02 03")
+    symbols = make_proc_symbol("CALLER", 0x100)
+    tpu = tmp_path / "unit.tpu"
+    tpu.write_bytes(
+        make_tpu6(
+            [(FAR_CALL, [POINTER_FIXUP])],
+            const=typed_const,
+            symbols=symbols,
+            flags=2,
+        )
+    )
+
+    obj = load_tpu_object(tpu)
+
+    assert obj.header.signature == b"TPU6"
+    assert obj.header.has_overlays
+    assert obj.header.code_size == len(FAR_CALL)
+    assert obj.header.const_size == len(typed_const)
+    assert obj.header.off_const == obj.header.off_code + _roundup(len(FAR_CALL))
+    assert obj.header.off_code_reloc == obj.header.off_const + _roundup(len(typed_const))
+    assert obj.code == FAR_CALL
+    assert [symbol.name for symbol in obj.code_symbols] == ["CALLER"]
+    assert [(f.offset, f.length) for f in obj.fixups] == [(1, 4)]
+
+
 def test_tpu_rejects_unsupported_signature(tmp_path):
     tpu = tmp_path / "unit.tpu"
-    tpu.write_bytes(b"TPU6" + bytes(0x40))
+    tpu.write_bytes(b"TPU7" + bytes(0x40))
 
-    with pytest.raises(TpuCompareError, match="expected b'TPU5' or b'TPU9'"):
+    with pytest.raises(TpuCompareError, match="expected b'TPU5'.*b'TPU6'.*b'TPU9'"):
         load_tpu_object(tpu)
 
 

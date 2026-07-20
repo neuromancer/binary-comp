@@ -13,9 +13,8 @@ The goal is to reduce the cost of bugs found near the end of source-code
 reconstruction, when most functions are close to 100% matching but the remaining
 differences are small, hard to localize, and still expected to be matchable.
 
-Platform scope: `binary-comp` is currently optimized for MSVC-built 32-bit PE
-reconstruction projects, with some analyzers reusable elsewhere when equivalent
-address mappings are available.
+Platform scope: `binary-comp` supports MSVC-built 32-bit PE reconstruction and
+16-bit DOS reconstruction based on OMF objects or Turbo Pascal compiled units.
 
 `binary-comp` is built around the workflow used by many MSVC-era reverse
 engineering projects:
@@ -246,6 +245,11 @@ binary-comp global-access --config path/to/binary-comp.json --target full --incl
 binary-comp report --config path/to/binary-comp.json --target full
 binary-comp vtables --config path/to/binary-comp.json --target full --dump
 binary-comp seh --config path/to/binary-comp.json --target full --report
+binary-comp mz-info PROGRAM.EXE
+binary-comp exepack-unpack PACKED.EXE build/UNPACKED.EXE
+binary-comp tpov-info --exe build/UNPACKED.EXE --overlay PROGRAM.OVR
+binary-comp tpu-info build/UNIT.TPU
+binary-comp tpu-scan --exe build/UNPACKED.EXE --overlay PROGRAM.OVR --tpu-dir build/tpus
 binary-comp omf-compare --original overlay.bin --original-offset 0x0 --object UNIT.OBJ --size 0x20
 binary-comp tpu-compare --original overlay.bin --original-offset 0x1a40 --tpu UNIT.TPU --block 3
 binary-comp tpu-compare --original PROG.OVR --tpu UNIT.TPU --block 3 --locate
@@ -260,9 +264,23 @@ raw original bytes against a selected OMF `LEDATA` range and masks `FIXUPP`
 relocation operands, which is useful for early Borland C/C++ matching before
 the RTLink/link step is modeled.
 
+`mz-info` validates a DOS MZ header, relocation table, load module, and optional
+trailing data. `exepack-unpack` statically recovers Microsoft EXEPACK images: it
+does not execute the packed program or unpacking stub. `tpov-info` discovers the
+resident Turbo Pascal overlay descriptors and accepts them only when their code
+and fixup extents form a unique, gap-free chain across the complete `TPOV`
+image. Together these commands produce a stable resident/overlay layout for
+subsequent routine matching.
+
+`tpu-info` inventories compiled-unit sections, procedure code blocks, symbols,
+and linker fixups. `tpu-scan` compiles that information into a first-pass
+continuity report by locating every sufficiently distinctive, relocation-masked
+code block in the resident MZ load module and descriptor-bounded overlay code.
+Its optional JSON output can be retained as generated research data.
+
 `binary-comp tpu-compare` is the Turbo Pascal / Borland Pascal counterpart for
 projects whose rebuilt artifact is a compiled unit. It reads Turbo Pascal 5.0
-(`TPU5`) and Turbo Pascal 6.0 (`TPU9`, also used by Turbo Pascal for Windows
+(`TPU5`), 5.5 (`TPU6`), and 6.0 (`TPU9`, also used by Turbo Pascal for Windows
 1.0) `.TPU` files, extracts the emitted CODE section, and masks the relocation
 operands that the linker fills in (16-bit offsets, segments, and far pointers)
 before comparing against a raw original byte window. Because Turbo Pascal

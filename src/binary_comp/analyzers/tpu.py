@@ -1,11 +1,11 @@
 """Turbo Pascal / Borland Pascal compiled-unit (.TPU) comparison helpers.
 
 This is the Pascal analog of the OMF helper. It reads Turbo Pascal 5.0
-(``TPU5``) and Turbo Pascal 6.0 (``TPU9``) units, extracts the emitted CODE
-section together with its relocation fixups, and masks the relocated operands
-before comparing against a raw original byte window. It is meant for 16-bit
-DOS reconstruction projects where the rebuilt artifact is a compiled unit and
-the reference is a linked executable or an overlay code image.
+(``TPU5``), 5.5 (``TPU6``), and 6.0 (``TPU9``) units, extracts the emitted
+CODE section together with its relocation fixups, and masks the relocated
+operands before comparing against a raw original byte window. It is meant for
+16-bit DOS reconstruction projects where the rebuilt artifact is a compiled
+unit and the reference is a linked executable or an overlay code image.
 
 The Turbo Pascal linker fills fixup operands (offsets, segments, and far
 pointers) at link time, so those bytes are zero in the ``.TPU``. Masking them
@@ -19,7 +19,7 @@ TPU5 file layout (each section is padded up to a 16-byte paragraph):
     code relocations [.., reloc_size)       fixups for the code section
     const section    [.., const_size)       initialized data
 
-TPU9 file layout:
+TPU6 and TPU9 file layout:
 
     symbol section   [0, sym_size)          contains the header and code-block table
     code section     [.., code_size)        emitted machine code, blocks concatenated
@@ -29,8 +29,8 @@ TPU9 file layout:
 
 The header, code-block record, and relocation record layouts are documented in
 the community "Inside Turbo Pascal Units" notes and the INTRFC63 TPU dumper.
-The TPU5 field positions and section order are additionally checked against
-units emitted by the original Turbo Pascal 5.0 command-line compiler.
+The field positions and section orders are additionally checked against units
+emitted by the corresponding original command-line compilers.
 """
 
 from __future__ import annotations
@@ -52,6 +52,7 @@ from binary_comp.core.disasm import Instruction, disassemble_raw_16
 
 
 TPU5_SIGNATURE = b"TPU5"
+TPU6_SIGNATURE = b"TPU6"
 TPU9_SIGNATURE = b"TPU9"
 
 # Header field byte offsets (all 16-bit words). TP5 stores code relocations
@@ -61,6 +62,15 @@ _TPU5_OFS_CONST_BLOCKS = 0x0E
 _TPU5_OFS_SIZES = 0x18  # sym_size, code_size, reloc_size, const_size
 _TPU5_OFS_FLAGS = 0x24
 _TPU5_HEADER_MIN = 0x26
+
+# TP5.5 introduces the section ordering later retained by TP6. Its header is
+# two bytes shorter than TPU9: the table offsets match TPU9, while the size
+# tuple and flags word are each shifted back by one word.
+_TPU6_OFS_CODE_BLOCKS = 0x0E
+_TPU6_OFS_CONST_BLOCKS = 0x10
+_TPU6_OFS_SIZES = 0x1A  # sym_size, code_size, const_size, reloc_size, vmt_size
+_TPU6_OFS_FLAGS = 0x28
+_TPU6_HEADER_MIN = 0x2A
 
 _TPU9_OFS_CODE_BLOCKS = 0x0E
 _TPU9_OFS_CONST_BLOCKS = 0x10
@@ -236,16 +246,28 @@ def parse_tpu_header(data: bytes) -> TpuHeader:
         off_const = off_code_reloc + _roundup_paragraph(reloc_size)
         off_const_reloc = off_const + _roundup_paragraph(const_size)
         total_size = off_const_reloc
-    elif signature == TPU9_SIGNATURE:
-        if len(data) < _TPU9_HEADER_MIN:
-            raise TpuCompareError("file too small to contain a TPU9 header")
+    elif signature in (TPU6_SIGNATURE, TPU9_SIGNATURE):
+        if signature == TPU6_SIGNATURE:
+            ofs_code_blocks_offset = _TPU6_OFS_CODE_BLOCKS
+            sizes_offset = _TPU6_OFS_SIZES
+            flags_offset = _TPU6_OFS_FLAGS
+            header_min = _TPU6_HEADER_MIN
+        else:
+            ofs_code_blocks_offset = _TPU9_OFS_CODE_BLOCKS
+            sizes_offset = _TPU9_OFS_SIZES
+            flags_offset = _TPU9_OFS_FLAGS
+            header_min = _TPU9_HEADER_MIN
+        if len(data) < header_min:
+            raise TpuCompareError(
+                f"file too small to contain a {signature.decode('ascii')} header"
+            )
         ofs_code_blocks, ofs_const_blocks = struct.unpack_from(
-            "<2H", data, _TPU9_OFS_CODE_BLOCKS
+            "<2H", data, ofs_code_blocks_offset
         )
         sym_size, code_size, const_size, reloc_size, vmt_size = struct.unpack_from(
-            "<5H", data, _TPU9_OFS_SIZES
+            "<5H", data, sizes_offset
         )
-        flags = struct.unpack_from("<H", data, _TPU9_OFS_FLAGS)[0]
+        flags = struct.unpack_from("<H", data, flags_offset)[0]
 
         off_code = _roundup_paragraph(sym_size)
         off_const = off_code + _roundup_paragraph(code_size)
@@ -255,7 +277,7 @@ def parse_tpu_header(data: bytes) -> TpuHeader:
     else:
         raise TpuCompareError(
             f"unsupported Turbo Pascal unit signature {signature!r}; "
-            f"expected {TPU5_SIGNATURE!r} or {TPU9_SIGNATURE!r}"
+            f"expected {TPU5_SIGNATURE!r}, {TPU6_SIGNATURE!r}, or {TPU9_SIGNATURE!r}"
         )
     return TpuHeader(
         signature=signature,
@@ -351,11 +373,15 @@ def _is_identifier_bytes(raw: bytes) -> bool:
     return all(65 <= b <= 90 or 48 <= b <= 57 or b == 0x5F for b in raw)
 
 
-def _parse_tpu9_code_symbols(data: bytes, header: TpuHeader) -> list[TpuCodeSymbol]:
+def _parse_modern_code_symbols(data: bytes, header: TpuHeader) -> list[TpuCodeSymbol]:
     limit = min(header.ofs_code_blocks, header.sym_size, len(data))
     found: list[TpuCodeSymbol] = []
     seen: set[str] = set()
-    cursor = _TPU9_HEADER_MIN
+    cursor = (
+        _TPU6_HEADER_MIN
+        if header.signature == TPU6_SIGNATURE
+        else _TPU9_HEADER_MIN
+    )
     while cursor + 2 < limit:
         if data[cursor] != _TPU9_SYM_KIND_PROC:
             cursor += 1
@@ -412,14 +438,15 @@ def _parse_tpu5_code_symbols(data: bytes, header: TpuHeader) -> list[TpuCodeSymb
 def parse_code_symbols(data: bytes, header: TpuHeader) -> tuple[TpuCodeSymbol, ...]:
     """Extract procedure/function symbols from the TPU symbol table, in code order.
 
-    TPU5 and TPU9 encode symbol kinds on opposite sides of the identifier. Both
-    carry a code-order key in the following attributes, so name-based block
-    selection remains stable across forward declarations and private routines.
+    TPU5 and the later formats encode symbol kinds on opposite sides of the
+    identifier. All carry a code-order key in the following attributes, so
+    name-based block selection remains stable across forward declarations and
+    private routines.
     """
     if header.signature == TPU5_SIGNATURE:
         found = _parse_tpu5_code_symbols(data, header)
     else:
-        found = _parse_tpu9_code_symbols(data, header)
+        found = _parse_modern_code_symbols(data, header)
     found.sort(key=lambda s: s.order_key)
     return tuple(found)
 
@@ -446,6 +473,41 @@ def load_tpu_object(path: str | Path) -> TpuObject:
         coproc_fixups=coproc,
         code_symbols=code_symbols,
     )
+
+
+def format_tpu_info(obj: TpuObject) -> str:
+    """Render the section, code-block, symbol, and fixup inventory of a unit."""
+
+    header = obj.header
+    lines = [
+        f"Turbo Pascal unit: {Path(obj.path).name}",
+        f"  signature:       {header.signature.decode('ascii')}",
+        f"  total size:      {header.total_size} bytes",
+        f"  symbol section:  {header.sym_size} bytes",
+        f"  code section:    {header.code_size} bytes @ 0x{header.off_code:X}",
+        f"  const section:   {header.const_size} bytes @ 0x{header.off_const:X}",
+        f"  code relocations:{header.reloc_size:9d} bytes @ 0x{header.off_code_reloc:X}",
+        f"  const relocs:    {header.vmt_size} bytes @ 0x{header.off_const_reloc:X}",
+        f"  overlay enabled: {'yes' if header.has_overlays else 'no'}",
+        f"  code blocks:     {len(obj.blocks)}",
+        f"  code fixups:     {len(obj.fixups)}",
+        f"  code symbols:    {len(obj.code_symbols)}",
+        "",
+        "Block  CodeOfs  Size  RelocBytes  Symbol",
+    ]
+    for block in obj.blocks:
+        symbol = (
+            obj.code_symbols[block.index].name
+            if block.index < len(obj.code_symbols)
+            else ""
+        )
+        lines.append(
+            f"{block.index:5d}  0x{block.code_offset:06X}  {block.size:4d}  "
+            f"{block.reloc_bytes:10d}  {symbol}"
+        )
+    if obj.coproc_fixups:
+        lines.extend(("", f"8087 fixups not masked: {obj.coproc_fixups}"))
+    return "\n".join(lines)
 
 
 def block_index_for_name(obj: TpuObject, function_name: str) -> int:
