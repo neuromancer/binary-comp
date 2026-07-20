@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +50,7 @@ class TpuBlockMatch:
     size: int
     fixed_bytes: int
     locations: tuple[TpuBlockLocation, ...]
+    resolution: str | None = None
 
     @property
     def is_unique(self) -> bool:
@@ -216,6 +217,83 @@ def _locations_in_regions(
     return locations
 
 
+def _location_region(location: TpuBlockLocation) -> tuple[str, str | None, int | None]:
+    return location.image, location.region, location.region_index
+
+
+def resolve_adjacent_matches(
+    matches: tuple[TpuBlockMatch, ...] | list[TpuBlockMatch],
+) -> tuple[TpuBlockMatch, ...]:
+    """Resolve duplicate block matches from contiguous TPU block order.
+
+    Turbo Pascal emits consecutive procedure blocks without padding. When an
+    otherwise ambiguous block has a candidate immediately after or before a
+    uniquely placed adjacent block from the same unit and scan region, that
+    candidate is uniquely identified. Resolution is iterative so a run of
+    identical adjacent routines can be assigned from an anchored end.
+
+    Only consecutive block indices are considered. A gap, region transition,
+    or conflicting left/right constraint leaves the match ambiguous.
+    """
+
+    resolved = list(matches)
+    positions_by_unit: dict[str, list[int]] = {}
+    for position, match in enumerate(resolved):
+        positions_by_unit.setdefault(match.unit, []).append(position)
+
+    changed = True
+    while changed:
+        changed = False
+        for positions in positions_by_unit.values():
+            for ordinal, position in enumerate(positions):
+                match = resolved[position]
+                if len(match.locations) <= 1:
+                    continue
+
+                constraints: list[set[TpuBlockLocation]] = []
+                evidence: list[str] = []
+
+                if ordinal > 0:
+                    previous = resolved[positions[ordinal - 1]]
+                    if previous.is_unique and previous.block_index + 1 == match.block_index:
+                        anchor = previous.locations[0]
+                        candidates = {
+                            location for location in match.locations
+                            if _location_region(location) == _location_region(anchor)
+                            and location.file_offset == anchor.file_offset + previous.size
+                        }
+                        if candidates:
+                            constraints.append(candidates)
+                            evidence.append("left")
+
+                if ordinal + 1 < len(positions):
+                    following = resolved[positions[ordinal + 1]]
+                    if following.is_unique and match.block_index + 1 == following.block_index:
+                        anchor = following.locations[0]
+                        candidates = {
+                            location for location in match.locations
+                            if _location_region(location) == _location_region(anchor)
+                            and location.file_offset + match.size == anchor.file_offset
+                        }
+                        if candidates:
+                            constraints.append(candidates)
+                            evidence.append("right")
+
+                if not constraints:
+                    continue
+                candidates = set.intersection(*constraints)
+                if len(candidates) != 1:
+                    continue
+                resolved[position] = replace(
+                    match,
+                    locations=(next(iter(candidates)),),
+                    resolution="adjacent-" + "-".join(evidence),
+                )
+                changed = True
+
+    return tuple(resolved)
+
+
 def scan_tpu_blocks(
     executable: bytes,
     overlay: bytes,
@@ -226,6 +304,7 @@ def scan_tpu_blocks(
     function_filter: str | None = None,
     regions: TpuScanRegions | None = None,
     include_missing: bool = False,
+    resolve_adjacent: bool = False,
 ) -> TpuScanResult:
     """Find compiled-unit code blocks in bounded resident and overlay code.
 
@@ -293,9 +372,13 @@ def scan_tpu_blocks(
                     locations=tuple(locations),
                 ))
 
+    matches = tuple(records)
+    if resolve_adjacent:
+        matches = resolve_adjacent_matches(matches)
+
     return TpuScanResult(
         overlay_count=overlay_count,
-        matches=tuple(records),
+        matches=matches,
     )
 
 
@@ -380,6 +463,7 @@ def format_tpu_scan(result: TpuScanResult, *, verbose: bool = False) -> str:
                 f"{match.status:9} {match.unit}.{match.procedure} "
                 f"block={match.block_index} size={match.size} -> "
                 f"{', '.join(rendered_locations) or 'not found'}"
+                f"{f' ({match.resolution})' if match.resolution else ''}"
             )
     return "\n".join(lines)
 

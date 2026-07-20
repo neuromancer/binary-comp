@@ -251,7 +251,7 @@ binary-comp tpov-info --exe build/UNPACKED.EXE --overlay PROGRAM.OVR
 binary-comp tpu-info build/UNIT.TPU
 binary-comp tpu-scan --exe build/UNPACKED.EXE --overlay PROGRAM.OVR --tpu-dir build/tpus
 binary-comp tpu-scan --exe build/UNPACKED.EXE --overlay FLAT.OVR --tpu-dir build/tpus \
-  --regions build/code-regions.json --include-missing
+  --regions build/code-regions.json --include-missing --resolve-adjacent
 binary-comp omf-compare --original overlay.bin --original-offset 0x0 --object UNIT.OBJ --size 0x20
 binary-comp tpu-compare --original overlay.bin --original-offset 0x1a40 --tpu UNIT.TPU --block 3
 binary-comp tpu-compare --original PROG.OVR --tpu UNIT.TPU --block 3 --locate
@@ -293,8 +293,11 @@ For flat overlay formats whose bounds come from external evidence,
 Bounds are validated and may be non-contiguous, but may not overlap within an
 image. Labels and indices are opaque project-supplied identifiers. Use
 `--include-missing` for a complete examined-block inventory and `--exclude`
-for generated aggregate TPU filename globs. Optional JSON output can be
-retained as generated research data.
+for generated aggregate TPU filename globs. `--resolve-adjacent` assigns an
+otherwise duplicated block only when a consecutive block from the same TPU and
+scan region uniquely anchors it on the left or right; resolution is iterative
+for runs of identical routines and is recorded in JSON. Optional JSON output
+can be retained as generated research data.
 
 `binary-comp tpu-compare` is the Turbo Pascal / Borland Pascal counterpart for
 projects whose rebuilt artifact is a compiled unit. It reads Turbo Pascal 5.0

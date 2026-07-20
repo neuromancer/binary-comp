@@ -3,8 +3,11 @@ from __future__ import annotations
 import struct
 
 from binary_comp.analyzers.tpu_scan import (
+    TpuBlockLocation,
+    TpuBlockMatch,
     format_tpu_scan,
     parse_tpu_scan_regions,
+    resolve_adjacent_matches,
     scan_tpu_blocks,
 )
 from binary_comp.core.mz import encode_mz
@@ -104,3 +107,49 @@ def test_tpu_scan_uses_explicit_regions_and_reports_missing_blocks(tmp_path):
     assert by_unit["RESIDENT"].locations[0].region_index == 7
     assert by_unit["MISSING"].status == "missing"
     assert "1 missing block(s)" in format_tpu_scan(result)
+
+
+def test_tpu_scan_resolves_runs_of_identical_blocks_from_adjacency():
+    def location(offset: int) -> TpuBlockLocation:
+        return TpuBlockLocation(
+            image="overlay",
+            file_offset=offset,
+            image_offset=offset - 100,
+            overlay_index=7,
+            region="unit-seven",
+            region_index=7,
+        )
+
+    duplicate_locations = (location(140), location(180), location(220))
+    matches = (
+        TpuBlockMatch("UNIT", "BEFORE", 13, 40, 40, (location(100),)),
+        TpuBlockMatch("UNIT", "FIRST", 14, 40, 40, duplicate_locations),
+        TpuBlockMatch("UNIT", "SECOND", 15, 40, 40, duplicate_locations),
+        TpuBlockMatch("UNIT", "THIRD", 16, 40, 40, duplicate_locations),
+        TpuBlockMatch("UNIT", "AFTER", 17, 40, 40, (location(260),)),
+    )
+
+    resolved = resolve_adjacent_matches(matches)
+
+    assert [match.locations[0].file_offset for match in resolved] == [100, 140, 180, 220, 260]
+    assert all(match.is_unique for match in resolved)
+    assert resolved[1].resolution == "adjacent-left"
+    assert resolved[3].resolution in {
+        "adjacent-left", "adjacent-right", "adjacent-left-right"
+    }
+
+
+def test_tpu_scan_does_not_resolve_across_a_block_or_region_gap():
+    anchor = TpuBlockLocation("overlay", 100, 0, 7, "unit-seven", 7)
+    other_region = TpuBlockLocation("overlay", 140, 0, 8, "unit-eight", 8)
+    matches = (
+        TpuBlockMatch("UNIT", "BEFORE", 1, 40, 40, (anchor,)),
+        TpuBlockMatch("UNIT", "DUP", 3, 40, 40, (other_region, TpuBlockLocation(
+            "overlay", 180, 80, 7, "unit-seven", 7
+        ))),
+    )
+
+    resolved = resolve_adjacent_matches(matches)
+
+    assert resolved[1].status == "ambiguous"
+    assert resolved[1].resolution is None

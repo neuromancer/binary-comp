@@ -305,6 +305,11 @@ def add_tpu_scan_parser(subparsers) -> None:
         action="store_true",
         help="Include examined blocks with no match in reports and JSON",
     )
+    parser.add_argument(
+        "--resolve-adjacent",
+        action="store_true",
+        help="Resolve duplicate matches anchored by consecutive TPU block adjacency",
+    )
     parser.add_argument("--function", help="Case-insensitive procedure-name filter")
     parser.add_argument("--min-block-size", type=int, default=8, help="Minimum code-block size (default: 8)")
     parser.add_argument("--min-fixed-bytes", type=int, default=8, help="Minimum non-fixup bytes (default: 8)")
@@ -854,6 +859,7 @@ def run_tpu_scan(args) -> int:
             function_filter=args.function,
             regions=regions,
             include_missing=args.include_missing,
+            resolve_adjacent=args.resolve_adjacent,
         )
         if args.json_path:
             write_tpu_scan_json(result, args.json_path)
