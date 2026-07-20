@@ -245,6 +245,8 @@ binary-comp global-access --config path/to/binary-comp.json --target full --incl
 binary-comp report --config path/to/binary-comp.json --target full
 binary-comp vtables --config path/to/binary-comp.json --target full --dump
 binary-comp seh --config path/to/binary-comp.json --target full --report
+binary-comp byte-compare ORIGINAL.OVR REBUILT.OVR
+binary-comp mz-compare ORIGINALU.EXE REBUILTU.EXE
 binary-comp mz-info PROGRAM.EXE
 binary-comp exepack-unpack PACKED.EXE build/UNPACKED.EXE
 binary-comp tpov-info --exe build/UNPACKED.EXE --overlay PROGRAM.OVR
@@ -265,6 +267,15 @@ rebuilt artifact is an OMF `.OBJ` instead of a linked executable. It compares
 raw original bytes against a selected OMF `LEDATA` range and masks `FIXUPP`
 relocation operands, which is useful for early Borland C/C++ matching before
 the RTLink/link step is modeled.
+
+`byte-compare` reports exact same-offset identity, size deltas, differing runs,
+and common prefixes/suffixes for arbitrary binary images. It intentionally does
+not call that metric semantic similarity: inserted or shifted code remains a
+difference until it is linked at the target position. `mz-compare` adds a field-
+by-field DOS header comparison, relocation-site overlap, and load-module
+identity both before and after masking relocation words that occupy the same
+site in both images. Both commands report differences by default and accept
+`--fail-on-difference` when byte identity is a required gate.
 
 `mz-info` validates a DOS MZ header, relocation table, load module, and optional
 trailing data. `exepack-unpack` statically recovers Microsoft EXEPACK images: it

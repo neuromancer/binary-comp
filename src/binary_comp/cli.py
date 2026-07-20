@@ -81,7 +81,14 @@ from binary_comp.analyzers.values import ValuesOptions, check_values, format_sum
 from binary_comp.analyzers.vtables import VtableOptions, check_vtables, format_vtable_summary
 from binary_comp.config import ConfigError, DEFAULT_CONFIG_PATH, ProjectTarget, load_project_target
 from binary_comp.source.functions import load_source_groups, map_source_groups
-from binary_comp.core.mz import MzFormatError, format_mz, parse_mz
+from binary_comp.core.binary import compare_binary, format_binary_comparison
+from binary_comp.core.mz import (
+    MzFormatError,
+    compare_mz,
+    format_mz,
+    format_mz_comparison,
+    parse_mz,
+)
 
 
 def add_values_parser(subparsers) -> None:
@@ -249,6 +256,36 @@ def add_mz_info_parser(subparsers) -> None:
     )
     parser.add_argument("input", help="DOS MZ executable to inspect")
     parser.set_defaults(handler=run_mz_info)
+
+
+def add_byte_compare_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "byte-compare",
+        help="Report exact same-offset identity for two arbitrary binary files",
+    )
+    parser.add_argument("original", help="Original binary image")
+    parser.add_argument("rebuilt", help="Rebuilt binary image")
+    parser.add_argument(
+        "--fail-on-difference",
+        action="store_true",
+        help="Exit non-zero unless the two files are byte-identical",
+    )
+    parser.set_defaults(handler=run_byte_compare)
+
+
+def add_mz_compare_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "mz-compare",
+        help="Compare DOS MZ structure, relocations, and same-offset bytes",
+    )
+    parser.add_argument("original", help="Original unpacked DOS MZ executable")
+    parser.add_argument("rebuilt", help="Rebuilt unpacked DOS MZ executable")
+    parser.add_argument(
+        "--fail-on-difference",
+        action="store_true",
+        help="Exit non-zero unless the two files are byte-identical",
+    )
+    parser.set_defaults(handler=run_mz_compare)
 
 
 def add_exepack_unpack_parser(subparsers) -> None:
@@ -808,6 +845,40 @@ def run_mz_info(args) -> int:
     return 0
 
 
+def run_byte_compare(args) -> int:
+    try:
+        comparison = compare_binary(
+            Path(args.original).read_bytes(),
+            Path(args.rebuilt).read_bytes(),
+        )
+    except (FileNotFoundError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"original: {args.original}")
+    print(f"rebuilt:  {args.rebuilt}")
+    print(format_binary_comparison(comparison))
+    if args.fail_on_difference and not comparison.exact:
+        return 1
+    return 0
+
+
+def run_mz_compare(args) -> int:
+    try:
+        comparison = compare_mz(
+            Path(args.original).read_bytes(),
+            Path(args.rebuilt).read_bytes(),
+        )
+    except (FileNotFoundError, OSError, MzFormatError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"original: {args.original}")
+    print(f"rebuilt:  {args.rebuilt}")
+    print(format_mz_comparison(comparison))
+    if args.fail_on_difference and not comparison.exact:
+        return 1
+    return 0
+
+
 def run_exepack_unpack(args) -> int:
     try:
         result = unpack_exepack_file(args.input, args.output)
@@ -1003,6 +1074,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_exe_parser(subparsers)
     add_global_access_parser(subparsers)
     add_globals_parser(subparsers)
+    add_byte_compare_parser(subparsers)
+    add_mz_compare_parser(subparsers)
     add_mz_info_parser(subparsers)
     add_omf_compare_parser(subparsers)
     add_tpov_info_parser(subparsers)

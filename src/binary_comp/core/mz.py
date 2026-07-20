@@ -11,6 +11,12 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+from binary_comp.core.binary import (
+    BinaryComparison,
+    compare_binary,
+    format_binary_comparison,
+)
+
 
 MZ_HEADER_SIZE = 0x1C
 MZ_RELOCATION_SIZE = 4
@@ -78,6 +84,23 @@ class MzImage:
     relocations: tuple[MzRelocation, ...]
     load_module: bytes
     trailing_data: bytes
+
+
+@dataclass(frozen=True)
+class MzComparison:
+    original: MzImage
+    rebuilt: MzImage
+    whole_file: BinaryComparison
+    load_module: BinaryComparison
+    relocation_masked_load_module: BinaryComparison
+    original_relocation_sites: int
+    rebuilt_relocation_sites: int
+    common_relocation_sites: int
+    relocation_tables_exact: bool
+
+    @property
+    def exact(self) -> bool:
+        return self.whole_file.exact
 
 
 def _align_up(value: int, alignment: int) -> int:
@@ -248,4 +271,89 @@ def format_mz(image: MzImage) -> str:
     ]
     if image.trailing_data:
         lines.append(f"  trailing data:    {len(image.trailing_data)} bytes")
+    return "\n".join(lines)
+
+
+def compare_mz(original_data: bytes, rebuilt_data: bytes) -> MzComparison:
+    """Compare two validated MZ images without executing either image."""
+
+    original = parse_mz(original_data)
+    rebuilt = parse_mz(rebuilt_data)
+    original_sites = {relocation.linear_offset for relocation in original.relocations}
+    rebuilt_sites = {relocation.linear_offset for relocation in rebuilt.relocations}
+    common_sites = original_sites & rebuilt_sites
+
+    original_masked = bytearray(original.load_module)
+    rebuilt_masked = bytearray(rebuilt.load_module)
+    for offset in common_sites:
+        if offset + 1 < len(original_masked) and offset + 1 < len(rebuilt_masked):
+            original_masked[offset:offset + 2] = b"\x00\x00"
+            rebuilt_masked[offset:offset + 2] = b"\x00\x00"
+
+    return MzComparison(
+        original=original,
+        rebuilt=rebuilt,
+        whole_file=compare_binary(original_data, rebuilt_data),
+        load_module=compare_binary(original.load_module, rebuilt.load_module),
+        relocation_masked_load_module=compare_binary(
+            bytes(original_masked), bytes(rebuilt_masked)
+        ),
+        original_relocation_sites=len(original_sites),
+        rebuilt_relocation_sites=len(rebuilt_sites),
+        common_relocation_sites=len(common_sites),
+        relocation_tables_exact=original.relocations == rebuilt.relocations,
+    )
+
+
+def format_mz_comparison(comparison: MzComparison) -> str:
+    """Render structural and positional MZ comparison metrics."""
+
+    original = comparison.original.header
+    rebuilt = comparison.rebuilt.header
+
+    def field(label: str, original_value: str, rebuilt_value: str) -> str:
+        marker = "=" if original_value == rebuilt_value else "!"
+        return f"  {label:<20} {original_value:>12} {rebuilt_value:>12}  {marker}"
+
+    lines = [
+        "DOS MZ comparison",
+        "  field                    original      rebuilt",
+        field("declared size", str(original.declared_size), str(rebuilt.declared_size)),
+        field("header size", str(original.header_size), str(rebuilt.header_size)),
+        field(
+            "load module",
+            str(len(comparison.original.load_module)),
+            str(len(comparison.rebuilt.load_module)),
+        ),
+        field(
+            "relocations",
+            str(len(comparison.original.relocations)),
+            str(len(comparison.rebuilt.relocations)),
+        ),
+        field("entry CS:IP", f"{original.cs:04X}:{original.ip:04X}",
+              f"{rebuilt.cs:04X}:{rebuilt.ip:04X}"),
+        field("initial SS:SP", f"{original.ss:04X}:{original.sp:04X}",
+              f"{rebuilt.ss:04X}:{rebuilt.sp:04X}"),
+        field("minimum alloc", f"{original.minimum_allocation:04X}",
+              f"{rebuilt.minimum_allocation:04X}"),
+        field("maximum alloc", f"{original.maximum_allocation:04X}",
+              f"{rebuilt.maximum_allocation:04X}"),
+        "Relocation layout",
+        f"  common sites:        {comparison.common_relocation_sites} / "
+        f"{comparison.original_relocation_sites} original / "
+        f"{comparison.rebuilt_relocation_sites} rebuilt",
+        f"  ordered table exact: {'yes' if comparison.relocation_tables_exact else 'no'}",
+        format_binary_comparison(
+            comparison.load_module,
+            title="Load-module positional comparison",
+        ),
+        format_binary_comparison(
+            comparison.relocation_masked_load_module,
+            title="Load module with common relocation words masked",
+        ),
+        format_binary_comparison(
+            comparison.whole_file,
+            title="Whole-file positional comparison",
+        ),
+    ]
     return "\n".join(lines)
