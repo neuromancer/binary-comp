@@ -68,6 +68,7 @@ from binary_comp.analyzers.tp_overlay import (
 )
 from binary_comp.analyzers.tpu_scan import (
     format_tpu_scan,
+    load_tpu_scan_regions,
     scan_tpu_directory,
     write_tpu_scan_json,
 )
@@ -283,11 +284,27 @@ def add_tpu_info_parser(subparsers) -> None:
 def add_tpu_scan_parser(subparsers) -> None:
     parser = subparsers.add_parser(
         "tpu-scan",
-        help="Locate relocation-masked TPU code blocks in resident and TPOV code",
+        help="Locate relocation-masked TPU code blocks in bounded resident and overlay code",
     )
     parser.add_argument("--exe", required=True, help="Associated unpacked MZ executable")
-    parser.add_argument("--overlay", required=True, help="TPOV overlay image")
+    parser.add_argument("--overlay", required=True, help="TPOV or explicitly bounded overlay image")
     parser.add_argument("--tpu-dir", required=True, help="Directory containing compiled .TPU files")
+    parser.add_argument(
+        "--regions",
+        help="JSON manifest of bounded resident/overlay code regions; "
+             "use for flat overlay formats without a TPOV directory",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help="TPU filename glob to exclude; may be repeated",
+    )
+    parser.add_argument(
+        "--include-missing",
+        action="store_true",
+        help="Include examined blocks with no match in reports and JSON",
+    )
     parser.add_argument("--function", help="Case-insensitive procedure-name filter")
     parser.add_argument("--min-block-size", type=int, default=8, help="Minimum code-block size (default: 8)")
     parser.add_argument("--min-fixed-bytes", type=int, default=8, help="Minimum non-fixup bytes (default: 8)")
@@ -826,13 +843,17 @@ def run_tpu_info(args) -> int:
 
 def run_tpu_scan(args) -> int:
     try:
+        regions = load_tpu_scan_regions(args.regions) if args.regions else None
         result = scan_tpu_directory(
             args.exe,
             args.overlay,
             args.tpu_dir,
+            exclude_patterns=tuple(args.exclude),
             minimum_block_size=args.min_block_size,
             minimum_fixed_bytes=args.min_fixed_bytes,
             function_filter=args.function,
+            regions=regions,
+            include_missing=args.include_missing,
         )
         if args.json_path:
             write_tpu_scan_json(result, args.json_path)

@@ -250,6 +250,8 @@ binary-comp exepack-unpack PACKED.EXE build/UNPACKED.EXE
 binary-comp tpov-info --exe build/UNPACKED.EXE --overlay PROGRAM.OVR
 binary-comp tpu-info build/UNIT.TPU
 binary-comp tpu-scan --exe build/UNPACKED.EXE --overlay PROGRAM.OVR --tpu-dir build/tpus
+binary-comp tpu-scan --exe build/UNPACKED.EXE --overlay FLAT.OVR --tpu-dir build/tpus \
+  --regions build/code-regions.json --include-missing
 binary-comp omf-compare --original overlay.bin --original-offset 0x0 --object UNIT.OBJ --size 0x20
 binary-comp tpu-compare --original overlay.bin --original-offset 0x1a40 --tpu UNIT.TPU --block 3
 binary-comp tpu-compare --original PROG.OVR --tpu UNIT.TPU --block 3 --locate
@@ -276,7 +278,23 @@ subsequent routine matching.
 and linker fixups. `tpu-scan` compiles that information into a first-pass
 continuity report by locating every sufficiently distinctive, relocation-masked
 code block in the resident MZ load module and descriptor-bounded overlay code.
-Its optional JSON output can be retained as generated research data.
+For flat overlay formats whose bounds come from external evidence,
+`--regions` accepts a generic JSON manifest instead of assuming `TPOV`:
+
+```json
+{
+  "scan_regions": {
+    "resident": [{"label": "resident-code", "index": 1, "start": 0, "end": 4096}],
+    "overlay": [{"label": "overlay-a", "index": 7, "start": 8, "end": 8192}]
+  }
+}
+```
+
+Bounds are validated and may be non-contiguous, but may not overlap within an
+image. Labels and indices are opaque project-supplied identifiers. Use
+`--include-missing` for a complete examined-block inventory and `--exclude`
+for generated aggregate TPU filename globs. Optional JSON output can be
+retained as generated research data.
 
 `binary-comp tpu-compare` is the Turbo Pascal / Borland Pascal counterpart for
 projects whose rebuilt artifact is a compiled unit. It reads Turbo Pascal 5.0
