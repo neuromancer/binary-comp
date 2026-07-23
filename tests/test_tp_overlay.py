@@ -46,6 +46,18 @@ def make_overlay_pair() -> tuple[bytes, bytes]:
     return encode_mz(resident, cs=0, ip=0), overlay
 
 
+def make_fbov_pair() -> tuple[bytes, bytes]:
+    resident = (
+        bytes(17)
+        + make_descriptor(8, 3, 2, 1, 9)
+        + bytes(11)
+        + make_descriptor(13, 4, 0, 2, 12)
+    )
+    payload = b"abc" + b"de" + b"WXYZ"
+    overlay = b"FBOV" + struct.pack("<I", len(payload)) + payload
+    return encode_mz(resident, cs=0, ip=0), overlay
+
+
 def test_tp_overlay_parser_recovers_gap_free_descriptor_chain():
     executable, overlay = make_overlay_pair()
 
@@ -64,4 +76,24 @@ def test_tp_overlay_parser_rejects_gap_in_coverage():
     broken = overlay[:9] + b"!" + overlay[9:]
 
     with pytest.raises(TpOverlayError, match="descriptor for overlay offset"):
+        parse_tp_overlay(executable, broken)
+
+
+def test_tp_overlay_parser_recovers_fbov_descriptor_chain():
+    executable, overlay = make_fbov_pair()
+
+    image = parse_tp_overlay(executable, overlay)
+
+    assert image.signature == b"FBOV"
+    assert image.header_size == 8
+    assert len(image.descriptors) == 2
+    assert [item.file_offset for item in image.descriptors] == [8, 13]
+    assert "overlay[0x8:0x11]" in format_tp_overlay(image)
+
+
+def test_tp_overlay_parser_rejects_wrong_fbov_payload_size():
+    executable, overlay = make_fbov_pair()
+    broken = overlay[:4] + struct.pack("<I", len(overlay)) + overlay[8:]
+
+    with pytest.raises(TpOverlayError, match="FBOV declares"):
         parse_tp_overlay(executable, broken)

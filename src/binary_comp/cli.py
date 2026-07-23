@@ -301,10 +301,10 @@ def add_exepack_unpack_parser(subparsers) -> None:
 def add_tpov_info_parser(subparsers) -> None:
     parser = subparsers.add_parser(
         "tpov-info",
-        help="Discover and validate a resident Turbo Pascal TPOV directory",
+        help="Discover and validate a resident Turbo Pascal TPOV/FBOV directory",
     )
     parser.add_argument("--exe", required=True, help="Associated unpacked MZ executable")
-    parser.add_argument("--overlay", required=True, help="TPOV overlay image")
+    parser.add_argument("--overlay", required=True, help="TPOV or FBOV overlay image")
     parser.add_argument("--expect-count", type=int, help="Fail unless this many overlay units are found")
     parser.set_defaults(handler=run_tpov_info)
 

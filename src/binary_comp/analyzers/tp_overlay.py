@@ -1,10 +1,10 @@
-"""Discover and validate classic Turbo Pascal overlay descriptors.
+"""Discover and validate resident Turbo Pascal overlay descriptors.
 
-For ``TPOV`` images, the directory is resident in the associated MZ load
-module rather than stored as a conventional table in the overlay file.  Each
-descriptor is accepted only when its procedure stubs are structurally valid,
-and the final directory must form one unique, gap-free chain across every byte
-after the overlay signature.
+For ``TPOV`` and ``FBOV`` images, the directory is resident in the associated
+MZ load module rather than stored as a conventional table in the overlay file.
+Each descriptor is accepted only when its procedure stubs are structurally
+valid, and the final directory must form one unique, gap-free chain across
+every byte after the format-specific overlay header.
 """
 
 from __future__ import annotations
@@ -17,6 +17,9 @@ from binary_comp.core.mz import MzImage, parse_mz
 
 
 TPOV_SIGNATURE = b"TPOV"
+FBOV_SIGNATURE = b"FBOV"
+TPOV_HEADER_SIZE = 4
+FBOV_HEADER_SIZE = 8
 DESCRIPTOR_SIZE = 32
 PROCEDURE_STUB_SIZE = 5
 TRAP = b"\xCD\x3F"
@@ -50,12 +53,13 @@ class TpOverlayDescriptor:
 class TpOverlayImage:
     mz: MzImage
     signature: bytes
+    header_size: int
     file_size: int
     descriptors: tuple[TpOverlayDescriptor, ...]
 
 
 def _descriptor_candidates(
-    mz: MzImage, overlay: bytes, signature_size: int
+    mz: MzImage, overlay: bytes, header_size: int
 ) -> tuple[TpOverlayDescriptor, ...]:
     image = mz.load_module
     candidates: list[TpOverlayDescriptor] = []
@@ -73,7 +77,7 @@ def _descriptor_candidates(
         ) = struct.unpack_from("<HHIHHHH", image, image_offset)
         extent_end = file_offset + code_size + fixup_size
         if (
-            file_offset < signature_size
+            file_offset < header_size
             or extent_end <= file_offset
             or extent_end > len(overlay)
             or procedure_count > 0x1000
@@ -106,25 +110,42 @@ def _descriptor_candidates(
     return tuple(candidates)
 
 
+def _overlay_header(overlay: bytes) -> tuple[bytes, int]:
+    signature = overlay[:4]
+    if signature == TPOV_SIGNATURE:
+        return signature, TPOV_HEADER_SIZE
+    if signature == FBOV_SIGNATURE:
+        if len(overlay) < FBOV_HEADER_SIZE:
+            raise TpOverlayError("truncated FBOV header")
+        declared_payload = struct.unpack_from("<I", overlay, 4)[0]
+        actual_payload = len(overlay) - FBOV_HEADER_SIZE
+        if declared_payload != actual_payload:
+            raise TpOverlayError(
+                f"FBOV declares {declared_payload} payload bytes, "
+                f"but file contains {actual_payload}"
+            )
+        return signature, FBOV_HEADER_SIZE
+    raise TpOverlayError(
+        f"expected {TPOV_SIGNATURE!r} or {FBOV_SIGNATURE!r} signature, "
+        f"found {signature!r}"
+    )
+
+
 def parse_tp_overlay(executable: bytes, overlay: bytes) -> TpOverlayImage:
-    """Recover a unique resident directory and validate complete TPOV coverage."""
+    """Recover a unique resident directory and validate complete overlay coverage."""
 
     try:
         mz = parse_mz(executable)
     except RuntimeError as exc:
         raise TpOverlayError(str(exc)) from exc
-    if not overlay.startswith(TPOV_SIGNATURE):
-        raise TpOverlayError(
-            f"expected {TPOV_SIGNATURE!r} signature, found {overlay[:4]!r}"
-        )
+    signature, header_size = _overlay_header(overlay)
 
-    signature_size = len(TPOV_SIGNATURE)
     by_file_offset: dict[int, list[TpOverlayDescriptor]] = {}
-    for candidate in _descriptor_candidates(mz, overlay, signature_size):
+    for candidate in _descriptor_candidates(mz, overlay, header_size):
         by_file_offset.setdefault(candidate.file_offset, []).append(candidate)
 
     directory: list[TpOverlayDescriptor] = []
-    next_file_offset = signature_size
+    next_file_offset = header_size
     while next_file_offset < len(overlay):
         matches = by_file_offset.get(next_file_offset, [])
         if len(matches) != 1:
@@ -145,7 +166,8 @@ def parse_tp_overlay(executable: bytes, overlay: bytes) -> TpOverlayImage:
         raise TpOverlayError("overlay contains no descriptor-backed units")
     return TpOverlayImage(
         mz=mz,
-        signature=TPOV_SIGNATURE,
+        signature=signature,
+        header_size=header_size,
         file_size=len(overlay),
         descriptors=tuple(directory),
     )
@@ -186,7 +208,7 @@ def format_tp_overlay(image: TpOverlayImage) -> str:
         )
     lines.extend((
         "",
-        f"validated: descriptors cover overlay[0x{len(image.signature):X}:"
+        f"validated: descriptors cover overlay[0x{image.header_size:X}:"
         f"0x{image.file_size:X}] exactly",
     ))
     return "\n".join(lines)

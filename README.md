@@ -281,9 +281,10 @@ site in both images. Both commands report differences by default and accept
 trailing data. `exepack-unpack` statically recovers Microsoft EXEPACK images: it
 does not execute the packed program or unpacking stub. `tpov-info` discovers the
 resident Turbo Pascal overlay descriptors and accepts them only when their code
-and fixup extents form a unique, gap-free chain across the complete `TPOV`
-image. Together these commands produce a stable resident/overlay layout for
-subsequent routine matching.
+and fixup extents form a unique, gap-free chain across the complete `TPOV` or
+`FBOV` image. For `FBOV`, it also validates the declared payload size in the
+eight-byte header. Together these commands produce a stable resident/overlay
+layout for subsequent routine matching.
 
 `tpu-info` inventories compiled-unit sections, procedure code blocks, symbols,
 and linker fixups. `tpu-scan` compiles that information into a first-pass

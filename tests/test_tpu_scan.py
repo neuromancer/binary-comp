@@ -60,6 +60,22 @@ def test_tpu_scan_locates_unique_overlay_and_resident_blocks(tmp_path):
     assert "2 uniquely located block(s)" in format_tpu_scan(result)
 
 
+def test_tpu_scan_discovers_fbov_regions_automatically(tmp_path):
+    code = bytes.fromhex("55 89 e5 b8 34 12 5d cb")
+    payload = code
+    overlay = b"FBOV" + struct.pack("<I", len(payload)) + payload
+    resident = bytes(9) + descriptor(8, len(code))
+    executable = encode_mz(resident)
+    tpu = tmp_path / "OVERLAY.TPU"
+    tpu.write_bytes(make_tpu6(code, "DRAW"))
+
+    result = scan_tpu_blocks(executable, overlay, (tpu,))
+
+    assert result.overlay_count == 1
+    assert result.unique_count == 1
+    assert result.matches[0].locations[0].overlay_index == 1
+
+
 def test_tpu_scan_uses_explicit_regions_and_reports_missing_blocks(tmp_path):
     overlay_code = bytes.fromhex("55 89 e5 b8 34 12 5d cb")
     resident_code = bytes.fromhex("55 89 e5 b8 78 56 5d cb")
